@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RPG · 우리거래소</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+:root {
+  --bg: #EDF0F4; --surface: #fff; --ink: #18202E; --ink-2: #4A5465; --muted: #8A93A3; --line: #E1E5EB;
+  --up: #E2323F; --down: #2767D9; --gold: #C98A0C; --gold-soft: #FBF3E1; --violet: #6D4AE0; --violet-soft: #EFEAFD;
+  --ok: #1F9D55;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); overflow-x: hidden;
+  font: 15px/1.5 "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+.num { font-variant-numeric: tabular-nums; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; border-radius: 6px; }
+
+header { display: flex; align-items: center; gap: 18px; padding: 12px 24px; background: var(--surface);
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
+.brand { font-weight: 800; font-size: 18px; letter-spacing: -0.03em; }
+.brand span { color: var(--up); }
+nav.menu { display: flex; gap: 4px; margin-right: auto; }
+nav.menu a { padding: 6px 12px; border-radius: 8px; text-decoration: none; color: var(--muted); font-weight: 700; }
+nav.menu a[aria-current="page"] { background: var(--violet-soft); color: var(--violet); }
+.wallet { display: flex; gap: 16px; font-size: 14px; }
+.wallet b { font-size: 15px; }
+.login { background: #5865F2; color: #fff; padding: 8px 14px; border-radius: 999px; text-decoration: none; font-weight: 600; }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; max-width: 1180px; margin: 18px auto 60px; padding: 0 18px; }
+.panel { background: var(--surface); border-radius: 18px; padding: 20px 22px; }
+main, aside { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+h2 { margin: 0 0 12px; font-size: 17px; letter-spacing: -0.02em; }
+.muted { color: var(--muted); font-size: 13px; }
+.btn { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; background: var(--bg); color: var(--ink-2); }
+.btn.primary { background: var(--violet); color: #fff; }
+.btn.danger { background: var(--up); color: #fff; }
+.btn.small { padding: 6px 10px; font-size: 13px; border-radius: 8px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.bar { height: 8px; border-radius: 99px; background: #E6E9EE; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--up); transition: width .2s; }
+.bar.hp-me i { background: var(--ok); }
+.bar.exp i { background: var(--violet); }
+
+/* ---------- 캐릭터 ---------- */
+.char-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.char-name { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
+.lv { color: var(--violet); font-weight: 800; }
+.gear { margin: 6px 0 10px; font-size: 14px; color: var(--ink-2); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.stat { background: var(--bg); border-radius: 12px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.stat small { display: block; color: var(--muted); font-size: 12px; }
+.stat b { font-size: 16px; }
+.stat button { border: 0; background: var(--violet); color: #fff; border-radius: 8px; width: 30px; height: 30px; font-weight: 800; }
+.stat button:disabled { background: var(--line); color: var(--muted); }
+.points { margin-top: 10px; font-weight: 700; color: var(--violet); }
+
+/* ---------- 던전 ---------- */
+.dungeon-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; }
+.floor { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
+.enemies { display: flex; flex-direction: column; gap: 8px; }
+.enemy { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; width: 100%; text-align: left;
+  border: 2px solid transparent; background: var(--bg); border-radius: 12px; padding: 10px 12px; }
+.enemy[aria-pressed="true"] { border-color: var(--up); background: #FDF1F2; }
+.enemy .nm { font-weight: 700; }
+.enemy .hp { font-size: 13px; color: var(--ink-2); }
+.enemy .bar { grid-column: 1 / -1; }
+.enemy .tags { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+.me-box { margin: 14px 0 10px; }
+.me-box .row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px; gap: 10px; }
+.tags-me { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.log { background: #1C2230; color: #E7EAF0; border-radius: 12px; padding: 12px 14px; font-size: 13px;
+  line-height: 1.6; min-height: 120px; max-height: 220px; overflow-y: auto; margin: 10px 0; }
+.actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.actions .btn { padding: 12px 6px; }
+.items { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; }
+.merchant { display: grid; gap: 8px; margin: 10px 0; }
+.merchant .row { display: flex; justify-content: space-between; align-items: center; background: var(--gold-soft); border-radius: 12px; padding: 10px 12px; gap: 10px; }
+.start { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.start select { border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; background: var(--surface);
+  flex: 1 1 160px; min-width: 0; max-width: 100%; text-overflow: ellipsis; }
+select, input { max-width: 100%; }
+.t, .gear, .tags-me, .li .d { overflow-wrap: anywhere; }
+
+/* ---------- 탭 ---------- */
+.tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--line); margin: -4px -22px 12px; padding: 0 22px; overflow-x: auto; }
+.tabs button { border: 0; background: none; padding: 12px 2px 10px; font-weight: 700; color: var(--muted); border-bottom: 3px solid transparent; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.subtabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.subtabs button { border: 0; background: var(--bg); border-radius: 8px; padding: 6px 12px; font-weight: 600; color: var(--muted); }
+.subtabs button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.list { display: flex; flex-direction: column; }
+.li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--line); }
+.li:first-child { border-top: 0; }
+.li .info { min-width: 0; }
+.li .t { font-weight: 700; }
+.li .d { color: var(--muted); font-size: 12px; }
+.li .side { display: flex; gap: 6px; align-items: center; flex: none; }
+.qty { width: 64px; border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; text-align: right; }
+.tag { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; background: var(--bg); color: var(--ink-2); }
+.tag.lock { background: #F1F2F4; color: var(--muted); }
+.tag.own { background: #E6F6EC; color: var(--ok); }
+.tag.on { background: var(--violet); color: #fff; }
+.li.equipped { background: var(--violet-soft); margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: 10px; }
+.ach-done .t::before { content: "✅ "; }
+.ach-todo { opacity: .6; }
+.ach-todo .t::before { content: "⬜ "; }
+
+.pet { background: var(--bg); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.pet.on { background: var(--violet-soft); }
+.pet .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pet .d { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
+.pet .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.pet-bar i { background: #F39C12 !important; }
+.exchange { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.exchange input { width: 90px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; text-align: right; }
+
+.create { max-width: 420px; margin: 60px auto; text-align: center; }
+.create input { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 17px; margin: 14px 0; text-align: center; }
+
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); background: var(--ink); color: #fff;
+  padding: 12px 16px; border-radius: 12px; max-width: min(520px, calc(100vw - 32px)); font-size: 14px;
+  opacity: 0; pointer-events: none; transition: .2s; z-index: 50; white-space: pre-line; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.error { background: #8E1D25; }
+
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1024px) {
+  header { padding: 10px 14px; gap: 10px; flex-wrap: wrap; }
+  .brand { display: none; }
+  .wallet { width: 100%; justify-content: flex-end; order: 3; font-size: 13px; }
+  .layout { grid-template-columns: minmax(0, 1fr); padding: 0 10px; margin-top: 10px; gap: 12px; }
+  .panel { padding: 16px; border-radius: 16px; }
+  .tabs { margin: -2px -16px 10px; padding: 0 16px; }
+  .actions .btn { font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">우리<span>거래소</span></div>
+  <nav class="menu"><a href="./">거래소</a><a href="rpg" aria-current="page">RPG</a><a href="trpg">TRPG</a></nav>
+  <div class="wallet" id="wallet" hidden>
+    <span>현금 <b class="num" id="cash">-</b></span>
+    <span>골드 <b class="num" id="gold" style="color:var(--gold)">-</b></span>
+  </div>
+  <div id="me"></div>
+</header>
+
+<section class="panel create" id="login-box" hidden>
+  <h2>로그인이 필요해요</h2>
+  <p class="muted">디스코드 계정으로 로그인하면 봇의 RPG 캐릭터를 그대로 쓸 수 있어요.</p>
+  <a class="login" href="login">디스코드로 로그인</a>
+</section>
+
+<section class="panel create" id="create-box" hidden>
+  <h2>⚔️ 캐릭터 만들기</h2>
+  <p class="muted">처음 만들면 스킬포인트 10을 받아요. 이름은 1~12자.</p>
+  <input id="new-name" maxlength="12" placeholder="캐릭터 이름" autocomplete="off">
+  <button class="btn primary" id="create-btn">만들기</button>
+</section>
+
+<div id="maint" hidden style="max-width:1180px;margin:12px auto 0;padding:10px 16px;border-radius:12px;background:#FEF3C7;color:#92400E;font-weight:700;text-align:center">🔧 RPG 점검 중 — 보기만 할 수 있어요</div>
+<div id="hyper" hidden style="max-width:1180px;margin:12px auto 0;padding:10px 16px;border-radius:12px;background:#FFF1E6;color:#C2410C;font-weight:700;text-align:center"></div>
+<div class="layout" id="game" hidden>
+  <main>
+    <section class="panel" id="dungeon"></section>
+    <section class="panel" id="duel"></section>
+    <section class="panel">
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="shop" aria-selected="true">상점</button>
+        <button role="tab" data-tab="bag" aria-selected="false">가방·강화</button>
+        <button role="tab" data-tab="ach" aria-selected="false">업적</button>
+      </div>
+      <div id="tab-shop">
+        <div class="subtabs" id="shop-cats">
+          <button data-cat="무기" aria-pressed="true">무기</button>
+          <button data-cat="갑옷" aria-pressed="false">갑옷</button>
+          <button data-cat="아이템" aria-pressed="false">아이템</button>
+        </div>
+        <div class="list" id="shop-list"></div>
+      </div>
+      <div id="tab-bag" hidden><div class="list" id="bag-list"></div></div>
+      <div id="tab-ach" hidden><div class="list" id="ach-list"></div></div>
+    </section>
+  </main>
+  <aside>
+    <section class="panel" id="char"></section>
+    <section class="panel" id="accs"></section>
+    <section class="panel" id="pets"></section>
+    <section class="panel">
+      <h2>🪙 골드 환전</h2>
+      <p class="muted" id="rate"></p>
+      <div class="exchange">
+        <input id="ex-qty" class="num" inputmode="numeric" placeholder="골드">
+        <button class="btn small primary" data-ex="buy">원 → 골드</button>
+        <button class="btn small" data-ex="sell">골드 → 원</button>
+        <button class="btn small" id="ex-all">전부</button>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const n = (x) => (x ?? 0).toLocaleString("ko-KR");
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pct = (x) => `${Math.round(x * 100)}%`;
+const qn = (x) => (x >= 999999 ? "∞" : n(x));
+const 줄임 = (s, k = 18) => (s.length > k ? s.slice(0, k - 1) + "…" : s);
+const S = { me: null, target: 0, tab: "shop", cat: "무기", busy: false, playing: false, result: null, auto: false };
+const STAT_ICON = { 힘: "💪", 체력: "❤️", 속도: "💨", 지능: "🧠" };
+
+async function api(path, body) {
+  const opt = { credentials: "same-origin", headers: { "Content-Type": "application/json", "X-Requested-With": "uri-web" } };
+  if (body !== undefined) { opt.method = "POST"; opt.body = JSON.stringify(body); }
+  const res = await fetch(path, opt);
+  let data = null; try { data = await res.json(); } catch {}
+  if (!res.ok) throw Object.assign(new Error(data?.message || data?.detail || `오류 (${res.status})`), { status: res.status });
+  return data;
+}
+let tt;
+function toast(msg, err = false) {
+  const t = $("#toast"); t.textContent = msg; t.classList.toggle("error", err); t.classList.add("show");
+  clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 3500);
+}
+async function run(fn) {
+  if (S.busy) return; S.busy = true;
+  try { await fn(); } catch (e) { toast(e.message, true); } finally { S.busy = false; }
+}
+
+// ---------------- 불러오기 ----------------
+async function load() {
+  let me;
+  try { me = await api("api/rpg/me"); }
+  catch (e) {
+    if (e.status === 401) { $("#login-box").hidden = false; $("#me").innerHTML = `<a class="login" href="login">로그인</a>`; return; }
+    throw e;
+  }
+  S.me = me;
+  $("#maint").hidden = !(me.systems && !me.systems.rpg);
+  if (me.newAchievements?.length) toast(me.newAchievements.map((a) => `🏅 업적 달성: ${a}`).join("\n"));
+  $("#me").innerHTML = `<a href="logout" class="muted" style="text-decoration:none">로그아웃</a>`;
+  if (!me.character) { $("#create-box").hidden = false; $("#game").hidden = true; return; }
+  $("#create-box").hidden = true; $("#game").hidden = false; $("#wallet").hidden = false;
+  $("#cash").textContent = `${n(me.cash)}원`;
+  $("#gold").textContent = n(me.character.gold);
+  $("#rate").textContent = `1골드 = ${n(me.goldRate)}원`;
+  renderChar(); renderAccs(); renderPets(); renderDungeon(S.result || me.battle);
+  $("#hyper").hidden = !me.hyper;
+  if (me.hyper) $("#hyper").textContent = `🔥 하이퍼버닝 ${me.hyper.rate}배 · ${new Date(me.hyper.until).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}까지`;
+  if (S.tab === "bag") renderBag();
+}
+
+// ---------------- 캐릭터 ----------------
+function renderChar() {
+  const { character: c, derived: d, statMax } = S.me;
+  const eff = { 힘: `공격 ${d.atk} (무기 포함 ${n(d.weaponDmg)})`, 체력: `체력 ${d.hp}`, 속도: `회피 ${pct(d.evade)}`, 지능: `치명 ${pct(d.crit)}` };
+  $("#char").innerHTML = `
+    <div class="char-top"><span class="char-name">${esc(c.name)}</span><span class="lv">${S.me.admin ? "👑 Lv.∞" : `Lv.${c.level}`}</span></div>
+    ${S.me.admin ? `<div class="muted">관리자 · 모든 장비·아이템 무한 · 최고 ${c.best}층</div>` : `
+    <div class="bar exp" title="경험치"><i style="width:${Math.min(100, c.exp / c.expNeed * 100)}%"></i></div>
+    <div class="muted num">경험치 ${n(c.exp)} / ${n(c.expNeed)} · 최고 ${c.best}층</div>`}
+    <div class="gear">🗡️ ${esc(c.weaponDisplay || c.weapon)}${d.enhance ? ` +${d.enhance}` : ""} · 피해 ${n(d.weaponDmg)}<br>🛡️ ${esc(c.armor)} · 방어 ${d.def}</div>
+    <div class="stats">${Object.keys(STAT_ICON).map((k) => `
+      <div class="stat"><div><small>${STAT_ICON[k]} ${k} ${c.stats[k]}/${statMax}</small><b>${eff[k]}</b></div>
+        <button data-stat="${k}" aria-label="${k} 올리기" ${c.points <= 0 || c.stats[k] >= statMax ? "disabled" : ""}>+</button></div>`).join("")}
+    </div>
+    ${c.points ? `<div class="points">✨ 스킬포인트 ${c.points}</div>` : ""}`;
+}
+$("#char").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-stat]"); if (!b) return;
+  run(async () => { await api("api/rpg/stat", { stat: b.dataset.stat, n: 1 }); await load(); });
+});
+
+// ---------------- 친선전 ----------------
+const D = { data: null, last: null, 알린: new Set(), timer: null };
+async function loadDuels() {
+  if (!S.me?.character) return;
+  let r;
+  try { r = await api(`api/rpg/duels${D.last ? `?last=${D.last}` : ""}`); } catch { return; }
+  D.data = r;
+  for (const x of r.incoming) {
+    if (!D.알린.has(x.id)) { D.알린.add(x.id); toast(`⚔️ ${x.name}님이 친선전을 신청했어요!`); }
+  }
+  if (r.duel?.id) D.last = r.duel.id;
+  document.title = (r.incoming.length || r.duel?.turn ? "(!) " : "") + "RPG · 우리거래소";
+  // 남은 초는 매번 바뀌니 빼고 비교한다. 바뀐 게 없으면 다시 그리지 않아야 누르던 버튼이 사라지지 않는다
+  const 키 = JSON.stringify({ ...r, incoming: r.incoming.map((x) => x.id), outgoing: r.outgoing.map((x) => x.id) });
+  if (키 !== D.키) { D.키 = 키; renderDuel(); }
+  clearTimeout(D.timer);
+  D.timer = setTimeout(loadDuels, r.duel && !r.duel.end ? 1500 : 4000);
+}
+function renderDuel() {
+  const r = D.data; if (!r) return;
+  const box = $("#duel"), d = r.duel;
+  let html = `<div class="dungeon-head"><span class="floor">🤝 친선전</span><span class="muted">${r.record.win}승 ${r.record.lose}패 ${r.record.draw}무</span></div>`;
+  html += r.incoming.map((x) => `<div class="merchant"><div class="row"><span>⚔️ <b>${esc(x.name)}</b>님의 신청 · ${x.left}초 남음</span>
+      <span><button class="btn small primary" data-duel="accept" data-id="${x.id}">수락</button> <button class="btn small" data-duel="decline" data-id="${x.id}">거절</button></span></div></div>`).join("");
+  html += r.outgoing.map((x) => `<div class="merchant"><div class="row"><span>⏳ <b>${esc(x.name)}</b>님의 답을 기다리는 중 · ${x.left}초</span>
+      <button class="btn small" data-duel="cancel" data-id="${x.id}">취소</button></div></div>`).join("");
+  if (d && d.players) {
+    html += d.players.map((p) => `<div class="me-box"><div class="row"><b>${d.end ? "" : (p.me === d.turn ? "▶ " : "")}${esc(p.name)}${p.me ? " (나)" : ""}</b>
+        <span class="num">${n(p.hp)} / ${n(p.max)}</span></div>
+        <div class="bar${p.me ? " hp-me" : ""}"><i style="width:${p.hp / p.max * 100}%"></i></div>
+        <div class="tags-me">🗡️ ${esc(p.weapon)}${p.enh ? ` +${p.enh}` : ""} · 전투력 ${n(p.cp)} · ${esc(p.adjLabel || "공격·체력")} ${p.adj >= 0 ? "+" : ""}${p.adj}%</div></div>`).join("");
+    html += `<div class="log">${d.log.map(esc).join("<br>")}</div>`;
+    if (d.end) {
+      html += `<p><b>${d.winner ? (d.iWon ? "🏆 승리!" : `💀 ${esc(d.winner)} 승리`) : "무승부"}</b></p>
+        <button class="btn primary" data-duel="ok" style="width:100%">확인</button>`;
+    } else if (d.turn) {
+      html += `<p class="muted">내 차례예요 · ${d.turnNo}/${d.maxTurn}턴 · ${d.timeLimit}초 안에 행동하지 않으면 기권</p>
+        <div class="actions">${["⚔️ 공격", "👁️ 관찰", "💤 휴식", "🏳️ 항복"].map((x) => `<button class="btn${x.includes("공격") ? " danger" : ""}" data-duel="act" data-type="${x.split(" ")[1]}" data-id="${d.id}">${x}</button>`).join("")}</div>`;
+    } else {
+      html += `<p class="muted">${esc(d.turnName)}의 차례를 기다리는 중…</p>`;
+    }
+  } else if (!r.outgoing.length) {
+    html += `<div class="start"><input id="duel-name" class="qty" style="width:auto;flex:1;text-align:left" placeholder="상대 캐릭터 이름" maxlength="12">
+      <button class="btn primary" data-duel="challenge">친선전 신청</button></div>
+      <p class="muted">전투력 차이만큼 보정해서 비슷하게 맞춰요. 골드·아이템은 쓰지도 걸지도 않아요.</p>`;
+  }
+  box.innerHTML = html;
+  const log = box.querySelector(".log"); if (log) log.scrollTop = log.scrollHeight;
+}
+$("#duel").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-duel]"); if (!b) return;
+  const 동작 = b.dataset.duel;
+  if (동작 === "ok") { D.last = null; D.키 = null; if (D.data) D.data.duel = null; return renderDuel(); }
+  const body = 동작 === "challenge" ? { name: $("#duel-name").value.trim() } : { id: +b.dataset.id, type: b.dataset.type };
+  run(async () => {
+    await api(`api/rpg/duel/${동작}`, body);
+    if (동작 === "challenge") toast("🤝 신청을 보냈어요! 상대에게 디스코드 알림이 가요");
+    await loadDuels();
+  });
+});
+
+// ---------------- 악세서리 ----------------
+function renderAccs() {
+  const list = S.me.accessories;
+  const max = S.me.accessoryMax || 3, worn = list.filter((a) => a.equipped).length;
+  $("#accs").innerHTML = `<h2>💍 악세서리 <span class="muted">${worn}/${max}</span></h2>` + (list.some((a) => a.owned) ? "" : `<p class="muted">던전 어딘가의 비밀공간에서만 얻을 수 있어요.</p>`) +
+    list.map((a) => a.owned ? `
+      <div class="pet${a.equipped ? " on" : ""}">
+        <div class="top"><b>${a.emoji} ${esc(a.name)}${a.equipped ? ` <span class="tag on">착용 중</span>` : ""}</b>
+          ${a.equipped ? `<button class="btn small" data-acc="${esc(a.name)}" data-off="1">해제</button>`
+            : `<button class="btn small primary" data-acc="${esc(a.name)}"${worn >= max ? " disabled" : ""}>착용</button>`}</div>
+        <div class="d">${esc(a.desc)}</div></div>` : `<div class="pet" style="opacity:.5"><b>❔ ???</b></div>`).join("");
+}
+$("#accs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-acc]"); if (!b) return;
+  run(async () => { await api("api/rpg/accessory", { name: b.dataset.acc, off: !!b.dataset.off }); await load(); });
+});
+
+// ---------------- 펫 ----------------
+function renderPets() {
+  const me = S.me;
+  $("#pets").innerHTML = `<h2>🐾 펫 <span class="muted" style="font-weight:600">· 🦴 간식 ${qn(me.snacks)}</span></h2>
+    <p class="muted" style="margin:-6px 0 10px">펫 무기: ${esc(me.petWeapon || "맨손")} · 던전 입장할 때 바꿀 수 있어요</p>` +
+    me.pets.map((p) => `
+      <div class="pet${p.equipped ? " on" : ""}">
+        <div class="top"><b>${p.emoji} ${esc(p.nickname)}${p.nickname !== p.name ? ` <span class="muted">(${esc(p.name)})</span>` : ""}${p.equipped ? ` <span class="tag on">장착 중</span>` : ""}</b>
+          ${p.owned ? `<span class="muted num">체력 ${n(p.maxHp)}</span>` : `<span class="muted">${n(p.price)}골드</span>`}</div>
+        <div class="d">${esc(p.owned ? p.skill : p.desc)}${p.owned ? ` · 체력 Lv.${p.hpLv} / 능력 Lv.${p.skillLv}` : ""}</div>
+        <div class="btns">${p.owned ? `
+          ${p.equipped ? `<button class="btn small" data-pet="equip" data-name="">해제</button>` : `<button class="btn small" data-pet="equip" data-name="${esc(p.name)}">장착</button>`}
+          <button class="btn small" data-pet="rename" data-name="${esc(p.name)}" data-nick="${esc(p.nickname)}">✏️ 이름</button>
+          <button class="btn small primary" data-pet="upgrade" data-name="${esc(p.name)}" data-kind="체력" ${p.hpLv >= 99 ? "disabled" : ""}>체력 +1 (🦴${n(p.hpCost)})</button>
+          <button class="btn small primary" data-pet="upgrade" data-name="${esc(p.name)}" data-kind="능력" ${p.skillLv >= 99 ? "disabled" : ""}>능력 +1 (🦴${n(p.skillCost)})</button>`
+        : `<button class="btn small primary" data-pet="buy" data-name="${esc(p.name)}">데려오기</button>`}</div>
+      </div>`).join("");
+}
+$("#pets").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-pet]"); if (!b) return;
+  let 새이름;
+  if (b.dataset.pet === "rename") {
+    새이름 = prompt(`${b.dataset.name}의 새 이름 (1~12자, 비우면 원래 이름으로)`, b.dataset.nick);
+    if (새이름 === null) return;
+  }
+  run(async () => {
+    const r = await api(`api/rpg/pet/${b.dataset.pet}`, { name: b.dataset.name, kind: b.dataset.kind, nickname: 새이름 ?? "" });
+    if (b.dataset.pet === "rename") { toast(`✏️ 이제 이름은 ${r.result.이름}!`); await load(); return; }
+    const x = r.result;
+    if (b.dataset.pet === "buy") toast(`🐾 ${x.이름}을(를) 데려왔어요!`);
+    else if (b.dataset.pet === "upgrade") toast(`${x.이름} ${x.종류} Lv.${x.레벨}!`);
+    await load();
+  });
+});
+
+// ---------------- 던전 ----------------
+function raidCard(r) {
+  if (!r) return "";
+  const 비율 = r.max ? r.hp / r.max * 100 : 0;
+  const 남은 = Math.max(0, new Date(r.ends) - Date.now());
+  const 일 = Math.floor(남은 / 864e5), 시 = Math.floor(남은 % 864e5 / 36e5);
+  const 남은도전 = r.maxTries - r.tries;
+  const 메달 = ["🥇", "🥈", "🥉"];
+  return `
+    <div class="me-box" style="margin-top:16px">
+      <div class="row"><b>⚔️ 주간 레이드 · ${esc(r.boss)}</b><span class="num">${비율.toFixed(1)}%</span></div>
+      <div class="bar"><i style="width:${비율}%;background:#8E44AD"></i></div>
+      <p class="muted" style="margin:6px 0">${esc(r.desc)}<br>
+        ${r.killed ? `🏆 <b>${esc(r.killer || "")}</b>님의 마지막 일격으로 쓰러졌다! 월요일 0시에 새 보스가 나와요.`
+          : `⏳ ${일 ? `${일}일 ` : ""}${시}시간 남음 · 참가 ${r.people}명 · 하루 ${r.maxTries}번 · 한 번에 행동 ${r.turns}번`}<br>
+        보스 세기는 내 최고층 기준 · 피해 1등은 🎖️ 정복자의 훈장</p>
+      ${r.rank.length ? `<div class="muted" style="font-size:13px">${r.rank.slice(0, 5).map((x) => `${메달[x.rank - 1] || x.rank + "."} ${esc(x.name)} ${x.score.toLocaleString("ko-KR")}점`).join(" · ")}</div>` : ""}
+      <p class="muted" style="margin:6px 0">${r.practice ? "👑 관리자는 연습 모드 (기록 안 됨)" : `내 기록 ${r.mine ? `${r.mine.rank}위 · ${r.mine.score.toLocaleString("ko-KR")}점` : "없음"} · 오늘 ${r.tries}/${r.maxTries}`}
+        ${r.last ? `<br>지난 주 ${esc(r.last.boss)} ${r.last.killed ? "처치 ✅" : "실패 ❌"}${r.last.reward != null ? ` · 내 보상 🪙${n(r.last.reward)}` : ""}` : ""}</p>
+      <button class="btn danger" data-go="raid" style="width:100%" ${r.killed || (남은도전 <= 0 && !r.practice) || S.me.battleElsewhere ? "disabled" : ""}>
+        ⚔️ ${r.practice ? "연습 도전" : `레이드 도전 (오늘 ${Math.max(0, 남은도전)}번 남음)`}</button>
+    </div>`;
+}
+
+function dungeonCard(d) {
+  const 남은도전 = d.maxTries - d.tries;
+  const 메달 = ["🥇", "🥈", "🥉"];
+  const 글 = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>");
+  return `
+    <div class="me-box" style="margin-top:16px">
+      <div class="row"><b>${esc(d.title)}</b><span class="muted">${d.weekly ? "이번 주" : "오늘"} ${d.people}명</span></div>
+      <p class="muted" style="margin:6px 0">${글(d.desc)}
+        ${d.rule ? `<br>오늘의 규칙 <b>${esc(d.rule.name)}</b> — ${esc(d.rule.desc)} · 마지막 보스 ${esc(d.boss)}` : ""}</p>
+      ${d.rank.length ? `<div class="muted" style="font-size:13px">${d.rank.slice(0, 5).map((x) => `${메달[x.rank - 1] || x.rank + "."} ${esc(x.name)} ${n(x.score)}${d.unit}`).join(" · ")}</div>` : ""}
+      <p class="muted" style="margin:6px 0">내 기록 ${d.mine ? `${d.mine.rank}위 · ${n(d.mine.score)}${d.unit}` : "없음"} · 오늘 ${d.tries}/${d.maxTries}${d.rule ? ` · 오늘 보상 ${d.rewarded ? "받음 ✅" : "아직"}` : ""}</p>
+      <button class="btn danger" data-special="${esc(d.mode)}" style="width:100%" ${남은도전 <= 0 || S.me.battleElsewhere ? "disabled" : ""}>
+        ⚔️ 도전하기 (오늘 ${Math.max(0, 남은도전)}번 남음)</button>
+    </div>`;
+}
+
+function renderDungeon(b, 보일로그) {
+  const box = $("#dungeon");
+  if (b && (b.state === "사망" || b.state === "철수")) {
+    box.innerHTML = `
+      <div class="dungeon-head"><span class="floor">${b.raidScore !== null ? "⚔️ 레이드 종료" : b.state === "사망" ? "💀 쓰러졌다" : b.rewardAccessory ? "🎁 비밀공간 공략!" : "🏳️ 탐험 종료"}</span>
+        <span class="muted">${b.raidScore !== null || b.special ? "" : `${b.floor}층`}</span></div>
+      <div class="log" id="log">${(보일로그 || b.log).map(esc).join("<br>")}</div>
+      <p><b>탐험 결과</b> · 🪙 ${n(b.gold)}골드 · 🦴 간식 ${n(b.snacks)} · 처치 ${b.kills}명${b.special ? "" : ` · ${b.floor}층까지`}
+      ${b.special ? `<br><b>${esc(b.special.result)}</b>` : ""}
+      ${b.rewardAccessory ? `<br>🎁 <b>${esc(b.rewardAccessory)}</b>을(를) 얻었다!` : ""}
+      ${b.raidScore !== null ? `<br>⚔️ 레이드 점수 <b>${b.raidScore.toLocaleString("ko-KR")}</b>점` : ""}</p>
+      <button class="btn primary" data-go="ok" style="width:100%">확인</button>`;
+    const log = $("#log"); if (log) log.scrollTop = log.scrollHeight;
+    if (S.playing) box.querySelectorAll("button").forEach((x) => (x.disabled = true));
+    return;
+  }
+  if (!b) {
+    const floors = []; for (let f = 1; f <= S.me.startFloor; f += 10) floors.push(f);
+    box.innerHTML = `
+      <div class="dungeon-head"><span class="floor">🗼 무한 던전</span></div>
+      ${S.me.battleElsewhere ? `<p class="muted">디스코드에서 진행 중인 전투가 있어요. 그쪽을 마치거나 10분이 지나면 들어갈 수 있어요.</p>` : ""}
+      <div class="start">
+        <select id="start-floor" aria-label="시작 층">${floors.reverse().map((f) => `<option value="${f}">${f}층부터</option>`).join("")}</select>
+        ${S.me.pets.some((p) => p.equipped) ? `<select id="pet-weapon" aria-label="펫 무기">
+          <option value="">${S.me.pets.find((p) => p.equipped).emoji} 맨손</option>
+          ${S.me.inventory.filter((x) => x.kind === "weapon" && x.name !== S.me.character.weapon).map((x) =>
+            `<option value="${esc(x.name)}" ${x.name === S.me.petWeapon ? "selected" : ""}>${S.me.pets.find((p) => p.equipped).emoji} ${esc(줄임(x.name))}${x.enhance ? ` +${x.enhance}` : ""}</option>`).join("")}
+        </select>` : ""}
+        <button class="btn primary" id="start-btn" ${S.me.battleElsewhere ? "disabled" : ""}>던전 입장</button>
+      </div>
+      ${raidCard(S.me.raid)}
+      ${(S.me.dungeons || []).map(dungeonCard).join("")}
+      ${S.me.secretRooms?.length ? `<p class="muted" style="margin:14px 0 6px">👑 관리자 · 비밀공간 바로 입장</p>
+        <div class="items">${S.me.secretRooms.map((r) => `<button class="chip" data-secret="${esc(r.key)}" ${S.me.battleElsewhere ? "disabled" : ""}>${esc(r.title)}</button>`).join("")}</div>` : ""}
+      <div>
+      </div>`;
+    return;
+  }
+
+  const 적 = b.enemies;
+  if (S.target >= 적.length) S.target = 0;
+  const 쿨 = { 무기: "재장전", 로드롤러: "롤러충전", 과열: "과열" };
+  const 내상태 = [...Object.entries(b.effects).map(([k, v]) => `${k} ${v}`), ...Object.entries(b.cooldowns).map(([k, v]) => `${쿨[k]} ${v}`)];
+  const 탄 = b.ammo ? ` · ${b.ammo.name} ${qn(b.ammo.have)} (1회 ${b.ammo.need})` : "";
+
+  box.innerHTML = `
+    <div class="dungeon-head"><span class="floor">${b.title ? esc(b.title) : `${b.floor % 10 === 0 ? "👑" : "🗼"} ${b.floor}층 · ${esc(b.zone.name)}`}</span>
+      <span class="muted">${b.raid ? `행동 ${Math.min(b.raid.turn, b.raid.limit)}/${b.raid.limit} · 점수 ${b.raid.score.toLocaleString("ko-KR")}${b.raid.practice ? " (연습)" : ""}` : `🪙 ${n(b.gold)} · 처치 ${b.kills}`}</span></div>
+    ${b.zone ? `<p class="muted" style="margin:-4px 0 8px;font-size:13px">${esc(b.zone.desc)}</p>` : ""}
+    ${b.state === "전투" ? `<div class="enemies">${적.map((e, i) => `
+      <button class="enemy" data-target="${i}" aria-pressed="${i === S.target}">
+        <span class="nm">${esc(e.name)}</span><span class="hp num">${n(e.hp)}/${n(e.max)}</span>
+        <span class="bar"><i style="width:${e.hp / e.max * 100}%"></i></span>
+        <span class="tags">${e.type}${e.shield ? " · 🛡️방패" : ""}${e.aiming ? " · 🎯조준 중" : ""}${e.enraged ? " · 😡광폭" : ""}${(e.patterns || []).filter((p) => !(p === "조준" && e.aiming)).map((p) => " · " + p).join("")}${Object.entries(e.effects).map(([k, v]) => ` · ${k}${v}`).join("")}</span>
+      </button>`).join("")}</div>` : ""}
+    <div class="me-box">
+      <div class="row"><b>${esc(S.me.character.name)}</b><span class="num">${b.hp === null ? (b.danger ? "⚠️ 체력이 위험하다!" : "❓ ▒▒▒ / ▒▒▒") : `${n(b.hp)} / ${n(b.maxHp)}`}</span></div>
+      <div class="bar hp-me"><i style="width:${b.hp === null ? (b.danger ? 10 : 100) : b.hp / b.maxHp * 100}%;${b.hp === null ? "background:repeating-linear-gradient(90deg,#9aa 0 6px,#cdd 6px 12px)" : ""}"></i></div>
+      <div class="tags-me">🗡️ ${b.special?.weapon ? `${esc(b.special.weapon)} · 강화 ${esc(b.special.buffs || "없음")}` : esc(S.me.character.weaponDisplay || S.me.character.weapon)}${탄}${b.fuel !== null ? ` · 충전 ${b.fuel}/3` : ""}${내상태.length ? " · " + 내상태.join(" · ") : ""}</div>
+    </div>
+    ${b.pet ? `<div class="me-box" style="margin-top:0">
+      <div class="row"><b>${b.pet.emoji} ${esc(b.pet.name)}</b><span class="num">${b.pet.hp > 0 ? `${n(b.pet.hp)} / ${n(b.pet.max)}` : "💔 쓰러짐"}</span></div>
+      <div class="bar pet-bar"><i style="width:${b.pet.hp / b.pet.max * 100}%"></i></div>
+      <div class="tags-me">🗡️ ${esc(b.pet.weapon || "맨손")} · ${esc(b.pet.skill)}</div></div>` : ""}
+    <div class="log" id="log">${(보일로그 || b.log).map(esc).join("<br>")}</div>
+    ${S.auto
+      ? `<button class="btn danger" data-auto="off" style="width:100%">⏹️ ${S.full ? "풀오토" : "자동"} 정지</button>`
+      : b.special ? (b.special.choices.length ? "" : `<div class="actions" style="grid-template-columns:1fr;margin-bottom:8px">
+          <button class="btn" data-auto="on">🤖 자동${b.special.autoRate ? ` <span class="muted">(보상 ${Math.round((S.me.autoRate ?? 1) * 100)}%)</span>` : ""}</button></div>`)
+      : `<div class="actions" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
+          <button class="btn" data-auto="on">🤖 자동 <span class="muted">(보상 ${Math.round((S.me.autoRate ?? 1) * 100)}%)</span></button>
+          <button class="btn" data-auto="full">⏩ 풀오토 <span class="muted">(상인 건너뜀)</span></button></div>`}
+    ${S.auto ? "" : b.state === "전투" ? `
+      <div class="actions">
+        <button class="btn danger" data-act="공격">⚔️ 공격</button>
+        <button class="btn" data-act="관찰">👁️ 관찰</button>
+        <button class="btn" data-act="휴식">💤 휴식</button>
+        <button class="btn" data-act="도망">🏃 도망</button>
+      </div>
+      ${b.items.length ? `<div class="items">${b.items.map((it) => `<button class="chip" data-item="${esc(it.name)}" title="${esc(it.desc)}">${esc(it.name)} ×${qn(it.qty)}</button>`).join("")}</div>` : ""}`
+    : b.special?.choices.length ? `
+      <b>🎲 강화를 하나 고르자</b>
+      <div class="actions" style="grid-template-columns:1fr;margin:6px 0 8px">
+        ${b.special.choices.map((c, i) => `<button class="btn" data-pick="${i}" style="text-align:left">${c.emoji} <b>${esc(c.name)}</b> <span class="muted">— ${esc(c.desc)}</span></button>`).join("")}
+      </div>
+      <button class="btn" data-go="leave" style="width:100%">🏳️ 여기서 끝내기</button>`
+    : `
+      ${b.items.length && b.hp < b.maxHp ? `<b>🩹 다음 층 가기 전 회복</b><div class="items" style="margin:6px 0 12px">${b.items.map((it) => `<button class="chip" data-item="${esc(it.name)}" title="${esc(it.desc)}">${esc(it.name)} ×${qn(it.qty)}</button>`).join("")}</div>` : ""}
+      ${b.merchant.length ? `<b>🧳 상인이 나타났다!</b><div class="merchant">${b.merchant.map((m) => `
+        <div class="row"><span>${esc(m.name)} <span class="muted">-${Math.round(m.discount * 100)}%</span></span>
+          <button class="btn small primary" data-buy="${esc(m.name)}">${n(m.price)}골드</button></div>`).join("")}</div>` : ""}
+      ${b.canWindow ? `<button class="btn" data-go="window" style="width:100%;margin-bottom:8px">🪟 창밖으로 나간다</button>` : ""}
+      <div class="actions" style="grid-template-columns:2fr 1fr">
+        <button class="btn primary" data-go="next">▶️ ${b.special?.next || `${b.floor + 1}층으로`}</button>
+        <button class="btn" data-go="leave">🏳️ 철수</button>
+      </div>`}`;
+  if (S.auto) box.querySelectorAll("button:not([data-auto])").forEach((x) => (x.disabled = true));
+  const log = $("#log"); if (log) log.scrollTop = log.scrollHeight;
+  if (S.playing) box.querySelectorAll("button").forEach((x) => (x.disabled = true));
+}
+
+$("#dungeon").addEventListener("click", (e) => {
+  const t = e.target.closest("button"); if (!t) return;
+  if (t.dataset.secret) return run(async () => {
+    const r = (await api("api/rpg/dungeon/secret", { room: t.dataset.secret })).result;
+    S.target = 0;
+    if (r.state === "사망" || r.state === "철수") S.result = r;
+    await load();
+  });
+  if (t.dataset.go === "raid") return run(async () => {
+    await api("api/rpg/dungeon/raid", {});
+    S.target = 0; await load();
+  });
+  if (t.dataset.special) return run(async () => {
+    await api("api/rpg/dungeon/special", { mode: t.dataset.special });
+    S.target = 0; S.resume = false; await load();
+  });
+  if (t.dataset.pick !== undefined) return run(async () => {
+    const r = (await api("api/rpg/dungeon/pick", { index: +t.dataset.pick })).result;
+    S.target = 0;
+    if (S.resume && r.state === "전투") {       // 자동으로 돌다가 강화 때문에 멈춘 거면 이어서 돈다
+      S.resume = false; S.me.battle = r; S.auto = true; renderDungeon(r); setTimeout(자동루프, 0); return;
+    }
+    S.resume = false;
+    await 재생(r);
+  });
+  if (t.id === "start-btn") return run(async () => {
+    const body = { floor: +$("#start-floor").value };
+    if ($("#pet-weapon")) body.petWeapon = $("#pet-weapon").value;
+    const r = await api("api/rpg/dungeon/start", body);
+    S.target = 0; await load();
+  });
+  if (t.dataset.target !== undefined) { S.target = +t.dataset.target; return renderDungeon(S.me.battle); }
+  const act = (body) => run(async () => { const r = await api("api/rpg/dungeon/act", body); await 재생(r.result); });
+  if (t.dataset.act) return act({ type: t.dataset.act, target: S.target });
+  if (t.dataset.item) return act({ type: "아이템", item: t.dataset.item });
+  if (t.dataset.buy) return run(async () => { await api("api/rpg/dungeon/merchant", { name: t.dataset.buy }); await load(); });
+  if (t.dataset.auto === "off") { S.auto = false; return renderDungeon(S.me.battle); }
+  if (t.dataset.auto === "on" || t.dataset.auto === "full") {
+    S.auto = true; S.full = t.dataset.auto === "full";
+    if (S.full) toast("⏩ 풀오토 — 상인도 건너뛰고 계속 올라가요");
+    renderDungeon(S.me.battle); return 자동루프();
+  }
+  if (t.dataset.go === "ok") { S.result = null; S.target = 0; S.resume = false; return renderDungeon(null); }
+  if (t.dataset.go) return run(async () => { const r = await api(`api/rpg/dungeon/${t.dataset.go}`, {}); S.target = 0; await 재생(r.result); });
+});
+
+// 자동 모드: 서버가 한 걸음씩 결정하고, 멈출 이유가 생기면 멈춘다
+async function 자동루프() {
+  while (S.auto) {
+    let r;
+    try { r = (await api("api/rpg/dungeon/auto", { full: !!S.full })).result; }
+    catch (e) { S.auto = false; toast(e.message, true); break; }
+    S.me.battle = r;
+    if (r.newAchievements?.length) toast(r.newAchievements.map((a) => `🏅 업적 달성: ${a}`).join("\n"));
+    if (r.autoStop) {
+      S.auto = false; S.resume = !!r.special?.choices?.length;      // 강화를 고르면 자동이 이어진다
+      if (!S.resume) toast("🤖 자동 정지 — " + r.autoStop);
+    }
+    if (r.state === "사망" || r.state === "철수") { S.auto = false; S.result = r; }
+    renderDungeon(S.result || r);
+    if (!S.auto) break;
+    await new Promise((ok) => setTimeout(ok, 700));
+  }
+  await load();
+}
+
+// 이번 행동에서 생긴 줄을 한 줄씩 보여준 뒤 최종 상태를 그린다
+const 줄간격 = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 220;
+async function 재생(b) {
+  const 새 = b.newLog || [];
+  if (b.state === "사망" || b.state === "철수") S.result = b;
+  if (b.newAchievements?.length) toast(b.newAchievements.map((a) => `🏅 업적 달성: ${a}`).join("\n"));
+  if (새.length > 1 && 줄간격) {
+    const 이전 = b.log.slice(0, Math.max(0, b.log.length - 새.length));
+    S.playing = true;
+    for (let i = 1; i <= 새.length; i++) {
+      renderDungeon(b, 이전.concat(새.slice(0, i)));
+      await new Promise((ok) => setTimeout(ok, 줄간격));
+    }
+    S.playing = false;
+  }
+  await load();
+}
+
+// ---------------- 상점 ----------------
+async function renderShop() {
+  const list = await api(`api/rpg/shop?cat=${encodeURIComponent(S.cat)}`);
+  $("#shop-list").innerHTML = list.map((x) => {
+    if (S.cat === "아이템") return `
+      <div class="li"><div class="info"><div class="t">${esc(x.name)} <span class="tag">보유 ${qn(x.have)}</span></div><div class="d">${esc(x.desc)}</div></div>
+        <div class="side"><input class="qty num" inputmode="numeric" value="1" data-qty="${esc(x.name)}" aria-label="수량">
+          <button class="btn small primary" data-buyitem="${esc(x.name)}">${n(x.price)}골드</button></div></div>`;
+    const 수치 = S.cat === "무기" ? `공격 ${x.atk}${x.ammo ? ` · ${x.ammo} 필요` : ""}`
+      : `방어 ${x.def}${x.penalty ? ` · 회피 -${Math.round(x.penalty * 100)}%` : ""}${Object.entries(x.resist || {}).map(([k, v]) => ` · ${k} -${Math.round(v * 100)}%`).join("")}`;
+    const 강 = x.enhance ? ` +${x.enhance}` : "";
+    const 버튼 = x.equipped ? `<span class="tag on">장착 중${강}</span>`
+      : x.owned ? `<span class="tag own">보유${강}</span><button class="btn small" data-equip="${esc(x.name)}">장착</button>`
+      : x.locked ? `<span class="tag lock">🔒 ${esc(x.reason)}</span>`
+      : `<button class="btn small primary" data-buyitem="${esc(x.name)}">${x.price ? n(x.price) + "골드" : "무료"}</button>`;
+    return `<div class="li${x.equipped ? " equipped" : ""}"><div class="info"><div class="t">${esc(x.name)}</div><div class="d">${수치}${x.desc ? " · " + esc(x.desc) : ""}</div></div><div class="side">${버튼}</div></div>`;
+  }).join("");
+}
+$("#shop-cats").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-cat]"); if (!b) return;
+  S.cat = b.dataset.cat;
+  document.querySelectorAll("#shop-cats button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  run(renderShop);
+});
+$("#shop-list").addEventListener("click", (e) => {
+  const eq = e.target.closest("button[data-equip]");
+  if (eq) return run(async () => { await api("api/rpg/equip", { name: eq.dataset.equip }); toast(`✅ ${eq.dataset.equip} 장착`); await Promise.all([renderShop(), load()]); });
+  const b = e.target.closest("button[data-buyitem]"); if (!b) return;
+  const name = b.dataset.buyitem;
+  const q = document.querySelector(`[data-qty="${CSS.escape(name)}"]`);
+  run(async () => {
+    const r = await api("api/rpg/buy", { name, qty: q ? +q.value || 1 : 1 });
+    toast(`🛒 ${r.result.이름}${r.result.개수 > 1 ? ` ×${r.result.개수}` : ""} 구매 (${n(r.result.가격)}골드)`);
+    await Promise.all([renderShop(), load()]);
+  });
+});
+
+// ---------------- 가방·강화 ----------------
+function renderBag() {
+  const c = S.me.character, inv = S.me.inventory;
+  const 무기 = inv.filter((x) => x.kind === "weapon"), 갑옷 = inv.filter((x) => x.kind === "armor"), 템 = inv.filter((x) => x.kind === "item");
+  const row = (x, 장착중, 버튼) => `<div class="li${장착중 ? " equipped" : ""}"><div class="info"><div class="t">${esc(x.display || x.name)}${장착중 ? ` <span class="tag on">장착 중</span>` : ""}${x.enhance ? ` +${x.enhance}` : ""}${x.kind === "item" ? ` ×${n(x.qty)}` : ""}</div>
+    ${x.kind === "weapon" ? `<div class="d">다음 강화 +${x.enhance + 1} · 성공 ${Math.max(1, 100 - x.enhance)}% · ${n((S.me.enhanceRate ?? 10) * (x.enhance + 1))}골드</div>` : ""}</div><div class="side">${버튼}</div></div>`;
+  $("#bag-list").innerHTML =
+    `<b>🗡️ 무기</b>` + 무기.map((x) => row(x, x.name === c.weapon,
+      `${x.name === c.weapon ? "" : `<button class="btn small" data-equip="${esc(x.name)}">장착</button>`}
+       ${x.enhance < 99 ? `<button class="btn small primary" data-enh="${esc(x.name)}">강화</button>
+         <button class="btn small" data-autoenh="${esc(x.name)}" data-cur="${x.enhance}">자동</button>` : ""}
+       ${x.name === c.weapon || x.name === "나무막대기" ? "" : `<button class="btn small" data-sell="${esc(x.name)}">환불</button>`}`)).join("") +
+    `<br><b>🛡️ 갑옷</b>` + 갑옷.map((x) => row(x, x.name === c.armor,
+      `${x.name === c.armor ? "" : `<button class="btn small" data-equip="${esc(x.name)}">장착</button>
+       ${x.name === "가죽옷" ? "" : `<button class="btn small" data-sell="${esc(x.name)}">환불</button>`}`}`)).join("") +
+    `<br><b>🧪 아이템</b>` + (S.me.admin ? `<p class="muted">👑 모든 아이템 ∞</p>` : 템.length ? 템.map((x) => row(x, false, `<button class="btn small" data-sell="${esc(x.name)}" data-sellqty="1">1개 판매</button>`)).join("") : `<p class="muted">없음</p>`);
+}
+$("#bag-list").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.equip) return run(async () => { await api("api/rpg/equip", { name: b.dataset.equip }); toast(`✅ ${b.dataset.equip} 장착`); await load(); renderBag(); });
+  if (b.dataset.sell) return run(async () => {
+    if (!b.dataset.sellqty && !confirm(`${b.dataset.sell}을(를) 환불할까요? 산 가격의 85%를 돌려받고, 강화 수치는 사라져요.`)) return;
+    const r = await api("api/rpg/sell", { name: b.dataset.sell, qty: 1 });
+    toast(`💰 ${r.result.이름} 판매 → ${n(r.result.받은골드)}골드`); await load(); renderBag();
+  });
+  if (b.dataset.autoenh) {
+    const 목표 = prompt(`${b.dataset.autoenh} 목표 강화 수치 (지금 +${b.dataset.cur})\n골드가 모자라거나 목표에 닿을 때까지 계속해요. 50강부터는 소멸 위험!`, String(Math.min(99, +b.dataset.cur + 10)));
+    if (!목표) return;
+    return run(async () => {
+      const r = (await api("api/rpg/autoenhance", { name: b.dataset.autoenh, target: +목표 })).result;
+      const 이후 = r.이후 === null ? "💥 소멸" : `+${r.이후}`;
+      toast(`🔨 ${r.무기} +${r.시작} → ${이후}\n${r.시도}번 시도 · 성공 ${r.성공} · 실패 ${r.실패}${r.하락 ? ` · 하락 ${r.하락}` : ""}\n골드 ${n(r.골드)} 사용 · ${r.결과}`, r.이후 === null);
+      await load(); renderBag();
+    });
+  }
+  if (b.dataset.enh) return run(async () => {
+    const r = (await api("api/rpg/enhance", { name: b.dataset.enh })).result;
+    const msg = { 성공: `✨ 강화 성공! +${r.이전} → +${r.이후}${r.새접두어 ? `\n🏷️ 새 칭호 ${r.새접두어}!` : ""}`, 실패: `💢 강화 실패 (+${r.이전} 유지)`, 하락: `📉 강화 하락 +${r.이전} → +${r.이후}`,
+                  파괴방지: `🛡️ 파괴방지권이 무기를 지켰다 (+${r.이전})`, 소멸: `💥 ${r.무기} +${r.이전} 소멸...`,
+                  변신: `📱✨ 노키아 3310 +99 달성! ${r.무기}(으)로 다시 태어났다!` }[r.결과];
+    toast(msg + (r.새업적?.length ? `\n🏅 ${r.새업적.join(", ")}` : ""), r.결과 === "소멸");
+    await load(); renderBag();
+  });
+});
+
+// ---------------- 업적 ----------------
+async function renderAch() {
+  const r = await api("api/rpg/achievements");
+  if (r.new.length) toast(r.new.map((a) => `🏅 업적 달성: ${a}`).join("\n"));
+  const 달성 = r.list.filter((x) => x.done).length;
+  $("#ach-list").innerHTML = `<p class="muted">${달성} / ${r.list.length} 달성</p>` + r.list.map((x) =>
+    `<div class="li ${x.done ? "ach-done" : "ach-todo"}"><div class="info" style="flex:1"><div class="t">${esc(x.name)}</div><div class="d">${esc(x.desc)}</div>
+       ${x.done ? "" : (x.progress || []).map((p) => `<div class="d" style="margin-top:4px">${esc(p.label)} ${n(p.cur)}/${n(p.goal)}${p.cur >= p.goal ? " ✓" : ""}</div>
+         <div class="bar exp" style="height:5px;margin-top:2px"><i style="width:${Math.min(100, p.cur / p.goal * 100)}%"></i></div>`).join("")}</div>
+     <div class="side"><span class="tag">${esc(x.rewardText || `+${n(x.reward)}골드`)}</span></div></div>`).join("");
+}
+
+// ---------------- 탭 ----------------
+document.querySelector(".tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-tab]"); if (!b) return;
+  S.tab = b.dataset.tab;
+  document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", x === b));
+  ["shop", "bag", "ach"].forEach((t) => ($(`#tab-${t}`).hidden = t !== S.tab));
+  if (S.tab === "shop") run(renderShop); else if (S.tab === "bag") renderBag(); else run(renderAch);
+});
+
+// ---------------- 환전 / 생성 ----------------
+document.querySelector(".exchange").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.id === "ex-all") { $("#ex-qty").value = "전부"; return; }
+  if (!b.dataset.ex) return;
+  run(async () => {
+    const r = await api("api/rpg/gold", { dir: b.dataset.ex, qty: $("#ex-qty").value.trim() || "0" });
+    toast(`환전 완료 · 골드 ${n(r.result.골드)} · 현금 ${n(r.result.현금)}원`); $("#ex-qty").value = ""; await load();
+  });
+});
+$("#create-btn").addEventListener("click", () => run(async () => {
+  const r = await api("api/rpg/create", { name: $("#new-name").value.trim() });
+  toast(r.result.first ? "🎉 캐릭터 탄생! 스킬포인트 10을 받았어요" : "🎉 캐릭터 탄생!");
+  await load(); await renderShop();
+}));
+
+(async () => { await run(async () => { await load(); if (S.me?.character) await renderShop(); }); loadDuels(); })();
+</script>
+</body>
+</html>

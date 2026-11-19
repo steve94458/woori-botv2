@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRPG · 우리거래소</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+:root {
+  --bg: #0D1017; --surface: #151A23; --surface-2: #1D242F; --ink: #E8ECF2; --ink-2: #A8B2C1;
+  --muted: #6B7585; --line: #272F3C;
+  --hot: #FF2E4D; --cyan: #00E5D0; --gold: #FFB020; --ok: #35D07F; --violet: #8B5CF6;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); overflow-x: hidden;
+  font: 15px/1.5 "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+.num { font-variant-numeric: tabular-nums; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 6px; }
+
+header { display: flex; align-items: center; gap: 18px; padding: 12px 24px; background: var(--surface);
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
+.brand { font-weight: 800; font-size: 18px; letter-spacing: -0.03em; }
+.brand span { color: var(--hot); }
+nav.menu { display: flex; gap: 4px; margin-right: auto; }
+nav.menu a { padding: 6px 12px; border-radius: 8px; text-decoration: none; color: var(--muted); font-weight: 700; font-size: 14px; }
+nav.menu a[aria-current="page"] { background: rgba(255,46,77,.14); color: var(--hot); }
+.wallet { display: flex; gap: 16px; font-size: 14px; align-items: center; }
+.wallet b { font-size: 15px; }
+.login { background: #5865F2; color: #fff; padding: 8px 14px; border-radius: 999px; text-decoration: none; font-weight: 600; }
+
+.layout { display: grid; grid-template-columns: minmax(0,1fr) 352px; gap: 18px; max-width: 1240px; margin: 18px auto 60px; padding: 0 18px; }
+.panel { background: var(--surface); border-radius: 18px; padding: 20px 22px; border: 1px solid var(--line); }
+main, aside { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+h2 { margin: 0 0 12px; font-size: 17px; letter-spacing: -0.02em; }
+h3 { margin: 18px 0 8px; font-size: 14px; color: var(--ink-2); letter-spacing: .02em; text-transform: uppercase; }
+.muted { color: var(--muted); font-size: 13px; }
+.btn { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-weight: 700; background: var(--surface-2); color: var(--ink-2); }
+.btn:hover:not(:disabled) { border-color: var(--muted); color: var(--ink); }
+.btn.primary { background: var(--hot); color: #fff; border-color: var(--hot); }
+.btn.cyan { background: var(--cyan); color: #06221F; border-color: var(--cyan); }
+.btn.danger { background: var(--hot); color: #fff; border-color: var(--hot); }
+.btn.small { padding: 6px 10px; font-size: 13px; border-radius: 8px; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+input, select { background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; width: 100%; }
+label.f { display: block; font-size: 12px; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.row > div { flex: 1 1 120px; min-width: 0; }
+
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px; }
+.tabs button { background: none; border: 0; padding: 8px 13px; border-radius: 9px; font-weight: 700; color: var(--muted); font-size: 14px; }
+.tabs button[aria-selected="true"] { background: var(--surface-2); color: var(--ink); }
+
+.statgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.stat { background: var(--surface-2); border-radius: 11px; padding: 8px 10px; text-align: center; }
+.stat b { display: block; font-size: 19px; line-height: 1.2; }
+.stat small { display: block; color: var(--muted); font-size: 11px; }
+.stat.up b { color: var(--cyan); }
+.stat.down b { color: var(--hot); }
+
+.bar { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin: 5px 0; }
+.bar i { display: block; height: 100%; transition: width .25s; }
+.bar.wound i { background: linear-gradient(90deg, var(--gold), var(--hot)); }
+.bar.hum i { background: var(--cyan); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--surface-2); border: 1px solid var(--line); border-radius: 99px; padding: 4px 10px; font-size: 12px; font-weight: 700; }
+.chip.hot { border-color: var(--hot); color: var(--hot); }
+.chip.cy { border-color: var(--cyan); color: var(--cyan); }
+
+.list { display: flex; flex-direction: column; gap: 7px; }
+.item { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+  display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; }
+.item .nm { font-weight: 700; }
+.item .ds { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+.item .px { font-size: 13px; color: var(--gold); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.item.on { border-color: var(--cyan); }
+
+.log { background: #0A0D13; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  font-size: 13.5px; line-height: 1.65; max-height: 420px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+.log .e { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.log .e:last-child { border-bottom: 0; }
+.log b { color: var(--cyan); }
+.log .ok { color: var(--ok); }
+.log .no { color: var(--hot); }
+
+.node { display: flex; align-items: center; gap: 9px; padding: 8px 11px; background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 10px; font-size: 13.5px; }
+.node.open { border-color: var(--ok); opacity: .55; }
+.node .ice { margin-left: auto; color: var(--hot); font-size: 12px; font-weight: 700; }
+
+.rulenav { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 16px; }
+.rulenav button { background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2);
+  border-radius: 99px; padding: 6px 13px; font-size: 13px; font-weight: 700; }
+.rulenav button[aria-selected="true"] { background: var(--hot); border-color: var(--hot); color: #fff; }
+.rulebody { font-size: 14px; line-height: 1.8; background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 14px; padding: 16px 18px; }
+.rulebody h4 { margin: 0 0 10px; font-size: 16px; color: var(--ink); }
+.rulebody b { color: var(--cyan); }
+.rulebody code { background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 1px 6px; font-size: 12.5px; color: var(--gold); font-family: ui-monospace, Menlo, monospace; }
+.rulebody .li { display: flex; gap: 9px; padding: 2px 0; }
+.sk { display: grid; grid-template-columns: 112px 52px 1fr; gap: 4px 10px; font-size: 13px;
+  padding: 7px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.sk:last-child { border-bottom: 0; }
+.sk b { color: var(--ink); }
+.sk .st { color: var(--cyan); font-weight: 700; font-size: 12px; }
+.sk .ds { color: var(--muted); }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
+.tbl caption { text-align: left; font-weight: 700; color: var(--ink-2); padding: 0 0 6px; font-size: 13px; }
+.tbl th, .tbl td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.tbl th { color: var(--muted); font-weight: 700; font-size: 12px; }
+.tbl td:first-child { color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lp { font-size: 13.5px; line-height: 1.75; }
+.lp b { color: var(--cyan); font-weight: 700; }
+.lp .yr { display: flex; gap: 10px; padding: 3px 0; }
+.lp .yr span { color: var(--muted); min-width: 42px; font-variant-numeric: tabular-nums; }
+
+#toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 16px); background: var(--surface-2);
+  color: var(--ink); border: 1px solid var(--line); padding: 12px 18px; border-radius: 12px; font-weight: 700;
+  opacity: 0; pointer-events: none; transition: .2s; z-index: 50; max-width: 90vw; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast.error { border-color: var(--hot); color: var(--hot); }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  header { flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
+  nav.menu { order: 3; width: 100%; margin: 0; }
+  .panel { padding: 16px; border-radius: 14px; }
+  .statgrid { grid-template-columns: repeat(3, 1fr); }
+  .sk { grid-template-columns: 1fr auto; }
+  .sk .ds { grid-column: 1 / -1; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">우리<span>거래소</span></div>
+  <nav class="menu"><a href="./">거래소</a><a href="rpg">RPG</a><a href="trpg" aria-current="page">TRPG</a></nav>
+  <div class="wallet" id="me"></div>
+</header>
+
+<div class="layout">
+<main>
+
+  <section class="panel" id="login-box" hidden>
+    <h2>로그인이 필요해요</h2>
+    <p class="muted">디스코드로 로그인하면 봇에서 쓰던 캐릭터를 그대로 이어서 할 수 있어요.</p>
+    <a class="login" href="login">디스코드로 로그인</a>
+  </section>
+
+  <!-- 캐릭터 만들기 -->
+  <section class="panel" id="create-box" hidden>
+    <h2>나이트 시티에 들어가기</h2>
+    <p class="muted" id="create-hint">사이버펑크 2020 룰로 굴리는 TRPG예요. 역할을 고르고 이름을 정하면 시작합니다.</p>
+    <div class="row" style="margin:14px 0">
+      <div><label class="f">이름</label><input id="c-name" maxlength="16" placeholder="캐릭터 이름"></div>
+      <div><label class="f">역할</label><select id="c-role"></select></div>
+    </div>
+    <p class="muted" id="role-desc" style="min-height:40px"></p>
+    <div class="row">
+      <button class="btn primary" id="c-make">새로 만들기</button>
+      <button class="btn cyan" id="c-link" hidden>RPG 이름으로 만들기</button>
+    </div>
+    <p class="muted" id="link-hint" style="margin-top:10px"></p>
+  </section>
+
+  <!-- 본 화면 -->
+  <section class="panel" id="play-box" hidden>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="roll" aria-selected="true">판정</button>
+      <button role="tab" data-tab="fight" aria-selected="false">전투</button>
+      <button role="tab" data-tab="net" aria-selected="false">넷러닝</button>
+      <button role="tab" data-tab="shop" aria-selected="false">상점</button>
+      <button role="tab" data-tab="body" aria-selected="false">몸</button>
+      <button role="tab" data-tab="past" aria-selected="false">과거</button>
+      <button role="tab" data-tab="rules" aria-selected="false">📖 규칙</button>
+    </div>
+
+    <!-- 판정 -->
+    <div data-pane="roll">
+      <h2>능력 판정</h2>
+      <div class="row">
+        <div><label class="f">능력치</label><select id="r-stat"></select></div>
+        <div><label class="f">스킬</label><select id="r-skill"></select></div>
+        <div><label class="f">난이도</label><select id="r-diff"></select></div>
+        <div style="flex:0 0 92px"><label class="f">보정</label><input id="r-mod" type="number" value="0"></div>
+        <div style="flex:0 0 auto"><button class="btn primary" id="r-go">굴리기</button></div>
+      </div>
+      <h3>운전</h3>
+      <div class="row">
+        <div><label class="f">상황</label><select id="d-sit"></select></div>
+        <div><label class="f">차량</label><select id="d-car"></select></div>
+        <div style="flex:0 0 auto"><button class="btn" id="d-go">운전 판정</button></div>
+      </div>
+      <h3>자제력</h3>
+      <p class="muted">인간성이 바닥나면 사람으로 남아 있기가 어려워집니다.</p>
+      <button class="btn" id="s-go">자제력 판정 (COOL)</button>
+    </div>
+
+    <!-- 전투 -->
+    <div data-pane="fight" hidden>
+      <h2>전투</h2>
+      <div class="row">
+        <div style="flex:0 0 auto"><button class="btn" id="i-me">내 이니셔티브</button></div>
+        <div style="flex:0 0 auto"><button class="btn small" id="i-all">전원 굴리기</button></div>
+        <div style="flex:0 0 auto"><button class="btn small" id="i-clr">순서 비우기</button></div>
+      </div>
+      <div id="init-list" class="chips" style="margin:10px 0"></div>
+
+      <h3>적 등록</h3>
+      <div class="row">
+        <div><label class="f">이름</label><input id="n-name" placeholder="부스터갱"></div>
+        <div style="flex:0 0 76px"><label class="f">BODY</label><input id="n-body" type="number" value="5"></div>
+        <div style="flex:0 0 76px"><label class="f">REF</label><input id="n-ref" type="number" value="5"></div>
+        <div style="flex:0 0 76px"><label class="f">스킬</label><input id="n-skill" type="number" value="4"></div>
+        <div style="flex:0 0 76px"><label class="f">SP</label><input id="n-armor" type="number" value="0"></div>
+        <div style="flex:0 0 auto"><button class="btn" id="n-add">추가</button></div>
+      </div>
+      <div class="list" id="npc-list" style="margin-top:10px"></div>
+
+      <h3>공격</h3>
+      <div class="row">
+        <div><label class="f">대상</label><select id="a-target"></select></div>
+        <div><label class="f">무기</label><select id="a-weapon"></select></div>
+        <div><label class="f">사거리</label><select id="a-range"></select></div>
+        <div style="flex:0 0 80px"><label class="f">연사</label><input id="a-burst" type="number" value="1" min="1"></div>
+        <div style="flex:0 0 80px"><label class="f">보정</label><input id="a-mod" type="number" value="0"></div>
+        <div style="flex:0 0 auto"><button class="btn primary" id="a-go">사격</button></div>
+      </div>
+
+      <h3>격투</h3>
+      <div class="row">
+        <div><label class="f">기술</label><select id="m-tech"></select></div>
+        <div><label class="f">대상</label><select id="m-target"></select></div>
+        <div style="flex:0 0 auto"><button class="btn" id="m-go">격투</button></div>
+      </div>
+      <p class="muted" id="m-desc"></p>
+
+      <h3>치료</h3>
+      <div class="row">
+        <div style="flex:0 0 auto"><button class="btn" id="h-full">완전 회복</button></div>
+        <div style="flex:0 0 auto"><button class="btn" id="h-stab">안정화 판정</button></div>
+        <div><label class="f">직접 피해 주기</label><input id="h-dmg" type="number" value="0"></div>
+        <div style="flex:0 0 auto"><button class="btn small" id="h-go">나에게 적용</button></div>
+      </div>
+    </div>
+
+    <!-- 넷러닝 -->
+    <div data-pane="net" hidden>
+      <h2>넷러닝</h2>
+      <p class="muted">ICE 와 싸우는 건 프로그램끼리의 힘겨루기입니다. 맨손으로 덤비면 거의 못 이겨요.</p>
+      <div class="row" style="margin-top:12px">
+        <div><label class="f">시스템 이름</label><input id="net-name" placeholder="아라사카 타워"></div>
+        <div><label class="f">난이도</label><select id="net-diff">
+          <option>쉬움</option><option selected>보통</option><option>어려움</option><option>매우어려움</option>
+        </select></div>
+        <div style="flex:0 0 auto"><button class="btn" id="net-make">시스템 만들기</button></div>
+      </div>
+      <div id="net-list" style="margin:14px 0; display:flex; flex-direction:column; gap:14px"></div>
+      <div class="row">
+        <div><label class="f">침입할 시스템</label><select id="net-sys"></select></div>
+        <div><label class="f">프로그램</label><select id="net-prog"></select></div>
+        <div style="flex:0 0 auto"><button class="btn cyan" id="net-run">침입</button></div>
+        <div style="flex:0 0 auto"><button class="btn small" id="net-clr">전부 지우기</button></div>
+      </div>
+    </div>
+
+    <!-- 상점 -->
+    <div data-pane="shop" hidden>
+      <h2>상점</h2>
+      <div class="tabs" id="shop-tabs">
+        <button data-cat="무기" aria-selected="true">무기</button>
+        <button data-cat="방어구" aria-selected="false">방어구</button>
+        <button data-cat="아이템" aria-selected="false">아이템</button>
+        <button data-cat="프로그램" aria-selected="false">프로그램</button>
+        <button data-cat="차량" aria-selected="false">차량</button>
+      </div>
+      <div class="list" id="shop-list"></div>
+      <h3>RPG 골드 환전</h3>
+      <div class="row">
+        <div><label class="f">방향</label><select id="x-dir">
+          <option value="골드→eb">골드 → eb</option><option value="eb→골드">eb → 골드</option>
+        </select></div>
+        <div><label class="f">수량</label><input id="x-qty" type="number" value="100" min="1"></div>
+        <div style="flex:0 0 auto"><button class="btn" id="x-go">환전</button></div>
+      </div>
+      <p class="muted" id="x-rate"></p>
+    </div>
+
+    <!-- 몸 (사이버웨어 + 마셜아츠 + 스킬) -->
+    <div data-pane="body" hidden>
+      <h2>사이버웨어</h2>
+      <p class="muted">금속을 넣을수록 인간성이 깎입니다. 10 깎일 때마다 EMP 가 1 떨어지고, 0 이 되면 사이버사이코입니다.</p>
+      <div class="bar hum" style="margin:10px 0"><i id="hum-bar"></i></div>
+      <p class="muted" id="hum-txt"></p>
+      <div class="list" id="cyber-mine" style="margin:10px 0"></div>
+      <div class="row">
+        <div><label class="f">설치할 사이버웨어</label><select id="cy-pick"></select></div>
+        <div style="flex:0 0 auto"><button class="btn primary" id="cy-go">설치</button></div>
+      </div>
+
+      <h3>마셜아츠</h3>
+      <div class="row">
+        <div><label class="f">유파</label><select id="ma-pick"></select></div>
+        <div style="flex:0 0 auto"><button class="btn" id="ma-go">배우기</button></div>
+      </div>
+      <p class="muted" id="ma-now"></p>
+
+      <h3>캐릭터</h3>
+      <div class="row">
+        <div style="flex:0 0 auto"><button class="btn danger" id="ln-del">캐릭터 삭제</button></div>
+      </div>
+      <p class="muted" id="link-now"></p>
+
+      <h3>스킬</h3>
+      <div class="row">
+        <div><label class="f">스킬 이름</label><input id="sk-name" placeholder="회피"></div>
+        <div style="flex:0 0 92px"><label class="f">레벨</label><input id="sk-lv" type="number" value="1" min="0" max="10"></div>
+        <div style="flex:0 0 auto"><button class="btn" id="sk-go">설정</button></div>
+      </div>
+      <div class="chips" id="skill-chips" style="margin-top:10px"></div>
+    </div>
+
+    <!-- 규칙 -->
+    <div data-pane="rules" hidden>
+      <h2>규칙서</h2>
+      <p class="muted">처음이면 「시작」부터 읽으세요. 본문의 <code>!TRPG …</code> 는 디스코드 명령어이고,
+        같은 일을 위쪽 탭에서도 전부 할 수 있습니다.</p>
+      <div class="rulenav" id="rule-nav"></div>
+      <div class="rulebody" id="rule-body"></div>
+
+      <h3>능력치 9종</h3>
+      <div class="list" id="rule-stats"></div>
+
+      <h3>스킬 42종</h3>
+      <p class="muted">판정할 때 괄호 안 능력치에 더해집니다.</p>
+      <div id="rule-skills"></div>
+
+      <h3>한눈에 보는 표</h3>
+      <div id="rule-tables"></div>
+    </div>
+
+    <!-- 과거 -->
+    <div data-pane="past" hidden>
+      <h2>라이프패스</h2>
+      <div class="lp" id="lp-box"></div>
+      <button class="btn" id="lp-go" style="margin-top:14px">과거 새로 굴리기</button>
+    </div>
+  </section>
+
+  <section class="panel" id="log-box" hidden>
+    <h2>기록</h2>
+    <div class="log" id="log"></div>
+  </section>
+
+</main>
+
+<aside>
+  <section class="panel" id="sheet" hidden></section>
+</aside>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+const n = (x) => (x ?? 0).toLocaleString("ko-KR");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const S = { me: null, data: null, rpg: null, tab: "roll", cat: "무기", rule: null, busy: false, log: [] };
+
+async function api(path, body) {
+  const opt = { credentials: "same-origin", headers: { "Content-Type": "application/json", "X-Requested-With": "uri-web" } };
+  if (body !== undefined) { opt.method = "POST"; opt.body = JSON.stringify(body); }
+  const res = await fetch(path, opt);
+  let data = null; try { data = await res.json(); } catch {}
+  if (!res.ok) throw Object.assign(new Error(data?.message || data?.detail || `오류 (${res.status})`), { status: res.status });
+  return data;
+}
+let tt;
+function toast(msg, err = false) {
+  const t = $("#toast"); t.textContent = msg; t.classList.toggle("error", err); t.classList.add("show");
+  clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 3500);
+}
+async function run(fn) {
+  if (S.busy) return; S.busy = true;
+  try { await fn(); } catch (e) { toast(e.message, true); } finally { S.busy = false; }
+}
+function 적(text) {
+  S.log.unshift(text);
+  if (S.log.length > 40) S.log.pop();
+  $("#log-box").hidden = false;
+  $("#log").innerHTML = S.log.map((t) => `<div class="e">${t}</div>`).join("");
+}
+function 꾸밈(t) {
+  return esc(t)
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/✅|🏁|🚪/g, (m) => `<span class="ok">${m}</span>`)
+    .replace(/❌|💀|🧠|⚡/g, (m) => `<span class="no">${m}</span>`)
+    .replace(/\n/g, "<br>");
+}
+function opt(sel, items, 선택) {
+  if (!sel) return;
+  if (!Array.isArray(items)) items = Object.keys(items || {});
+  sel.innerHTML = items.map((x) => {
+    const v = typeof x === "string" ? x : x.v;
+    const t = typeof x === "string" ? x : x.t;
+    return `<option value="${esc(v)}"${v === 선택 ? " selected" : ""}>${esc(t)}</option>`;
+  }).join("");
+}
+
+// ---------------- 불러오기 ----------------
+async function load() {
+  let me;
+  try { me = await api("api/trpg/me"); }
+  catch (e) {
+    if (e.status === 401) { $("#login-box").hidden = false; $("#me").innerHTML = `<a class="login" href="login">로그인</a>`; return; }
+    throw e;
+  }
+  if (!S.data) S.data = (await api("api/trpg/data")).result;
+  S.me = me.result; S.rpg = me.rpg;
+  $("#login-box").hidden = true;
+  그리기();
+}
+
+function 그리기() {
+  const D = S.data, c = S.me;
+  if (!c) {
+    $("#create-box").hidden = false;
+    $("#play-box").hidden = true; $("#sheet").hidden = true; $("#log-box").hidden = true;
+    opt($("#c-role"), Object.keys(D.roles));
+    역할설명();
+    if (S.rpg) {
+      $("#c-link").hidden = false;
+      $("#link-hint").textContent = `RPG 캐릭터 "${S.rpg.name}" 가 있어요. 그 이름으로 TRPG 캐릭터를 만들 수 있습니다. 능력치는 CP2020 규칙대로 새로 굴립니다.`;
+      $("#c-name").value = S.rpg.name;
+    } else {
+      $("#link-hint").textContent = "RPG 캐릭터가 있으면 그 이름으로 만들 수도 있어요. 능력치는 어느 쪽이든 새로 굴립니다.";
+    }
+    $("#me").innerHTML = `<a class="login" href="logout">로그아웃</a>`;
+    return;
+  }
+  $("#create-box").hidden = true;
+  $("#play-box").hidden = false; $("#sheet").hidden = false;
+  $("#me").innerHTML = `<div>💶 <b class="num">${n(c.money)}</b>eb</div><a class="login" href="logout">로그아웃</a>`;
+
+  시트();
+  탭채우기();
+  탭보이기();
+}
+
+// ---------------- 시트 ----------------
+function 시트() {
+  const c = S.me, D = S.data;
+  const 다침 = Math.min(100, (c.damage / 40) * 100);
+  const 인간 = c.humanityMax ? (c.humanity / c.humanityMax) * 100 : 0;
+  const 능력 = D.stats.map((k) => {
+    const 기본 = c.stats[k], 지금 = c.current[k];
+    const cls = 지금 > 기본 ? "up" : 지금 < 기본 ? "down" : "";
+    return `<div class="stat ${cls}"><b class="num">${지금}</b><small>${k}${지금 !== 기본 ? ` (${기본})` : ""}</small></div>`;
+  }).join("");
+
+  const 스킬 = Object.entries(c.skills).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `<span class="chip">${esc(k)} ${v}</span>`).join("") || `<span class="muted">없음</span>`;
+  const 사이버 = c.cyber.length
+    ? c.cyber.map((x) => `<span class="chip hot">${esc(x.name)}${x.qty > 1 ? `×${x.qty}` : ""}</span>`).join("")
+    : `<span class="muted">전부 살덩이</span>`;
+
+  $("#sheet").innerHTML = `
+    <h2>${esc(c.roleEmoji)} ${esc(c.name)}</h2>
+    <p class="muted">${esc(c.role)} · ${esc(c.special)} Lv.${c.specialLv}${c.linked ? " · 🔗 RPG 연동" : ""}</p>
+    <div class="statgrid" style="margin:12px 0">${능력}</div>
+
+    <h3>상태</h3>
+    <div class="bar wound"><i style="width:${다침}%"></i></div>
+    <p class="muted">누적 피해 <b class="num" style="color:var(--ink)">${c.damage}</b> — ${esc(c.wound)}
+      · 체격 ${esc(c.bodyType)} (피해 −${Math.abs(c.btm)})<br>
+      스턴 세이브 ${c.stunSave} 이하${c.deathSave !== null ? ` · <span style="color:var(--hot)">데스 세이브 ${c.deathSave} 이하</span>` : ""}</p>
+
+    <h3>인간성</h3>
+    <div class="bar hum"><i style="width:${인간}%"></i></div>
+    <p class="muted"><b class="num" style="color:var(--ink)">${c.humanity}</b> / ${c.humanityMax}</p>
+
+    <h3>장비</h3>
+    <p class="muted">
+      ${c.weapon ? `🔫 ${esc(c.weapon.name)} (${esc(c.weapon.damage)}, ${c.weapon.range}m)` : "🔫 맨손"}<br>
+      ${c.armor ? `🛡️ ${esc(c.armor.name)} SP ${c.armor.sp}` : "🛡️ 방어구 없음"}
+      ${c.cyberBonus.SP ? `<br>＋ 피하 장갑 SP ${c.cyberBonus.SP}` : ""}
+      ${c.martial ? `<br>🥋 ${esc(c.martial)}` : ""}
+    </p>
+
+    <h3>스킬</h3><div class="chips">${스킬}</div>
+    <h3>사이버웨어</h3><div class="chips">${사이버}</div>`;
+}
+
+
+// ---------------- 규칙서 ----------------
+function 규칙글(t) {
+  // 설명 텍스트를 사람이 읽기 좋은 HTML 로
+  return esc(t)
+    .split("\n")
+    .map((line) => {
+      if (!line.trim()) return "";
+      let h = line
+        .replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+      if (/^[•\d]/.test(line.trim()) || /^<code>/.test(h.trim())) {
+        return `<div class="li">${h}</div>`;
+      }
+      return `<div>${h}</div>`;
+    })
+    .join("");
+}
+
+function 규칙그리기() {
+  const D = S.data;
+  if (!D?.guide) return;
+  const 주제들 = D.guideOrder;
+  if (!S.rule) S.rule = 주제들[0];
+
+  $("#rule-nav").innerHTML = 주제들
+    .map((t) => `<button data-rule="${esc(t)}" aria-selected="${t === S.rule}">${esc(t)}</button>`)
+    .join("");
+  $("#rule-body").innerHTML = `<h4>${esc(S.rule)}</h4>` + 규칙글(D.guide[S.rule]);
+
+  // 능력치
+  $("#rule-stats").innerHTML = D.stats.map((k) => {
+    const v = D.statNames[k];
+    return `<div class="item"><div class="nm">${esc(k)} · ${esc(v.ko)}</div>
+      <div class="ds">${esc(v.desc)}</div></div>`;
+  }).join("");
+
+  // 스킬 — 능력치별로 묶어서
+  const 묶음 = {};
+  for (const [n, d] of Object.entries(D.skills)) (묶음[d.stat] ||= []).push([n, d.desc]);
+  $("#rule-skills").innerHTML = D.stats.filter((k) => 묶음[k]).map((k) => {
+    const 줄 = 묶음[k].sort((a, b) => a[0].localeCompare(b[0], "ko"))
+      .map(([n, ds]) => `<div class="sk"><b>${esc(n)}</b><span class="st">${esc(k)}</span><span class="ds">${esc(ds)}</span></div>`)
+      .join("");
+    return `<h4 style="margin:14px 0 4px;font-size:13px;color:var(--muted)">${esc(k)} · ${esc(D.statNames[k].ko)}</h4>${줄}`;
+  }).join("");
+
+  // 표
+  const 표 = (caption, head, rows) =>
+    `<table class="tbl"><caption>${esc(caption)}</caption><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>` +
+    rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("") + `</table>`;
+
+  const 부상 = [];
+  let 앞 = 1;
+  for (const w of D.wounds) {
+    if (w.name === "멀쩡함") { 앞 = 1; continue; }
+    부상.push([
+      앞 === w.upTo ? `${앞}` : `${앞}–${w.upTo}`,
+      esc(w.name),
+      w.mortal !== null
+        ? `능력치 −6 · <b style="color:var(--hot)">데스 세이브</b>`
+        : (w.stun ? `능력치 ${w.stun * 2}` : "없음"),
+      `${w.stun}`]);
+    앞 = w.upTo + 1;
+  }
+
+  $("#rule-tables").innerHTML =
+    표("난이도", ["목표", "이름", "어떤 일인가"],
+      Object.entries(D.difficulty).map(([k, v]) =>
+        [v, esc(k), ["집중하면 거의 된다", "훈련받은 사람이면 해낸다", "전문가도 긴장한다", "대부분 실패한다", "운이 따라야 한다"][Object.keys(D.difficulty).indexOf(k)] || ""])) +
+    표("사격 거리별 목표치", ["목표", "사거리"],
+      Object.entries(D.ranges).map(([k, v]) => [v, esc(k)])) +
+    표("맞은 부위 (1D10)", ["주사위", "부위"],
+      D.hitLocations.map((h) => [h.range[0] === h.range[1] ? h.range[0] : `${h.range[0]}–${h.range[1]}`,
+        esc(h.name) + (h.name === "머리" ? " <b style='color:var(--hot)'>(피해 2배)</b>" : "")])) +
+    표("누적 피해와 몸 상태", ["누적 피해", "상태", "몸이 어떻게 되나", "스턴 세이브 보정"], 부상) +
+    표("체격(BODY)과 피해 감소 — 맞을 때마다 이만큼 덜 아프다", ["BODY", "분류", "받는 피해"],
+      D.bodyTypes.map((b, i) => {
+        const 아래 = i === 0 ? 1 : D.bodyTypes[i - 1].upTo + 1;
+        const 칸 = b.upTo >= 99 ? `${아래}+` : (아래 === b.upTo ? `${아래}` : `${아래}–${b.upTo}`);
+        return [칸, esc(b.name), b.btm ? `${b.btm}` : "0"];
+      })) +
+    표("운전 난이도", ["목표", "상황"],
+      Object.entries(D.driveSituations).map(([k, v]) => [v, esc(k)]));
+}
+
+// ---------------- 탭 ----------------
+function 탭채우기() {
+  const c = S.me, D = S.data;
+
+  // 판정
+  opt($("#r-stat"), D.stats.map((k) => ({ v: k, t: `${k} · ${c.statNames[k]}` })), $("#r-stat").value || "REF");
+  opt($("#r-skill"), [{ v: "", t: "— 스킬 없음 —" }, ...Object.keys(c.skills)], $("#r-skill").value);
+  opt($("#r-diff"), Object.entries(D.difficulty).map(([k, v]) => ({ v: k, t: `${k} (${v})` })), $("#r-diff").value || "보통");
+  opt($("#d-sit"), Object.entries(D.driveSituations).map(([k, v]) => ({ v: k, t: `${k} (${v})` })), $("#d-sit").value);
+  opt($("#d-car"), [{ v: "", t: "— 차량 없음 —" }, ...c.vehicles.map((x) => x.name)], $("#d-car").value);
+
+  // 전투
+  const 적들 = c.npcs.map((x) => x.name);
+  opt($("#a-target"), 적들.length ? 적들 : [{ v: "", t: "— 적을 먼저 등록 —" }], $("#a-target").value);
+  opt($("#m-target"), [{ v: "", t: "— 대상 없음 —" }, ...적들], $("#m-target").value);
+  opt($("#a-weapon"), [{ v: "", t: `— 든 무기 (${c.weapon?.name ?? "주먹"}) —` }, ...Object.keys(D.weapons)], $("#a-weapon").value);
+  opt($("#a-range"), Object.entries(D.ranges).map(([k, v]) => ({ v: k, t: `${k} (${v})` })), $("#a-range").value || "중거리");
+  opt($("#m-tech"), Object.keys(D.techniques), $("#m-tech").value);
+  기술설명();
+
+  $("#npc-list").innerHTML = c.npcs.length ? c.npcs.map((x) => `
+    <div class="item"><div class="nm">${esc(x.name)}</div>
+      <div class="px">${esc(x.wound)}</div>
+      <div class="ds">BODY ${x.body} · REF ${x.ref} · 스킬 ${x.skill} · SP ${x.armor} · 누적 피해 ${x.damage}</div></div>`).join("")
+    : `<p class="muted">등록된 적이 없습니다.</p>`;
+  $("#init-list").innerHTML = c.initiative.length
+    ? c.initiative.map((x, i) => `<span class="chip ${i === 0 ? "cy" : ""}">${i + 1}. ${esc(x.name)} ${x.roll}</span>`).join("")
+    : `<span class="muted">이니셔티브를 굴리지 않았습니다.</span>`;
+
+  // 넷
+  opt($("#net-sys"), c.net.length ? c.net.map((x) => x.name) : [{ v: "", t: "— 시스템을 먼저 만드세요 —" }], $("#net-sys").value);
+  opt($("#net-prog"), [{ v: "", t: "— 맨손 (위험) —" }, ...c.programs],
+      $("#net-prog").value || (c.programs.find((p) => D.programs[p]?.class === "침입") ?? ""));
+  $("#net-list").innerHTML = c.net.map((s) => `
+    <div>
+      <p style="margin:0 0 6px"><b>${esc(s.name)}</b> <span class="muted">· ${esc(s.difficulty)} · 경보 ${s.alarm}회
+        · ${s.nodes.filter((x) => x.open).length}/${s.nodes.length} 돌파</span></p>
+      ${s.nodes.map((x) => `<div class="node ${x.open ? "open" : ""}" style="margin-bottom:5px">
+        ${x.open ? "✅" : "🔒"} <b>노드 ${x.n}</b> <span class="muted">${esc(x.kind)}</span>
+        <span class="ice">${x.ice.length ? esc(x.ice.join(", ")) : "경비 없음"}</span></div>`).join("")}
+    </div>`).join("") || `<p class="muted">이 방에 시스템이 없습니다. 하나 만들어 보세요.</p>`;
+
+  // 몸
+  const 인간 = c.humanityMax ? (c.humanity / c.humanityMax) * 100 : 0;
+  $("#hum-bar").style.width = 인간 + "%";
+  $("#hum-txt").textContent = `인간성 ${c.humanity} / ${c.humanityMax}` +
+    (c.humanity <= 0 ? " — 사이버사이코입니다." : c.humanity <= 20 ? " — 위험합니다." : "");
+  $("#cyber-mine").innerHTML = c.cyber.length ? c.cyber.map((x) => `
+    <div class="item on"><div class="nm">${esc(x.name)}${x.qty > 1 ? ` ×${x.qty}` : ""}</div>
+      <div><button class="btn small" data-cyrm="${esc(x.name)}">제거</button></div>
+      <div class="ds">${esc(x.desc)}</div></div>`).join("") : `<p class="muted">아직 아무것도 넣지 않았습니다.</p>`;
+  opt($("#cy-pick"), Object.entries(D.cyber).map(([k, v]) => ({ v: k, t: `${k} — ${n(v.price)}eb · 인간성 ${v.loss}` })), $("#cy-pick").value);
+  opt($("#ma-pick"), Object.entries(D.martial).map(([k, v]) => ({ v: k, t: `${k} (난이도 ${v.diff})` })), $("#ma-pick").value);
+  $("#ma-now").textContent = c.martial
+    ? `지금 유파: ${c.martial} — ${Object.entries(D.martial[c.martial].bonus).map(([k, v]) => `${k} +${v}`).join(", ")}`
+    : "배운 유파가 없습니다.";
+  $("#link-now").textContent = c.linked
+    ? "RPG 캐릭터의 이름으로 만든 캐릭터입니다. 능력치는 RPG 와 무관합니다."
+    : "RPG 와 연동되지 않은 캐릭터입니다.";
+  $("#skill-chips").innerHTML = Object.entries(c.skills).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `<span class="chip">${esc(k)} ${v}</span>`).join("") || `<span class="muted">없음</span>`;
+
+  // 상점
+  상점();
+  $("#x-rate").textContent = `환율: RPG 골드 1 = ${D.goldRate}eb` + (c.linked ? "" : " (연동 캐릭터만 환전할 수 있어요)");
+
+  // 과거
+  $("#lp-box").innerHTML = 과거글(c.lifepath);
+
+  // 규칙
+  규칙그리기();
+}
+
+function 상점() {
+  const D = S.data, cat = S.cat;
+  const 표 = { 무기: D.weapons, 방어구: D.armors, 아이템: D.items, 프로그램: D.programs, 차량: D.vehicles }[cat];
+  const act = cat === "프로그램" ? "programBuy" : cat === "차량" ? "vehicleBuy" : "buy";
+  $("#shop-list").innerHTML = Object.entries(표).map(([k, v]) => {
+    let 줄 = "";
+    if (cat === "무기") 줄 = `${v.damage} · ${v.rof}연사 · ${v.range}m · ${esc(v.desc)}`;
+    else if (cat === "방어구") 줄 = `SP ${v.sp} · ${v.areas.join(", ")} · ${esc(v.desc)}`;
+    else if (cat === "프로그램") 줄 = `${v.class} · 강도 ${v.str} · ${esc(v.desc)}`;
+    else if (cat === "차량") 줄 = `내구 ${v.sdp} · 장갑 ${v.sp} · ${v.speed}km/h · ${v.seats}인승 · ${esc(v.desc)}`;
+    else 줄 = esc(v.desc);
+    const 장착 = (cat === "무기" || cat === "방어구");
+    return `<div class="item">
+      <div class="nm">${esc(k)}</div>
+      <div class="px">${v.price ? n(v.price) + "eb" : "—"}
+        <button class="btn small" data-buy="${esc(k)}" data-act="${act}">사기</button>
+        ${장착 ? `<button class="btn small" data-equip="${esc(k)}">장착</button>` : ""}</div>
+      <div class="ds">${줄}</div></div>`;
+  }).join("");
+}
+
+function 과거글(d) {
+  if (!d) return `<p class="muted">아직 과거를 굴리지 않았습니다.</p>`;
+  return `
+    <p><b>출신</b> ${esc(d.출신)} · ${esc(d.언어)} 사용 · ${d.나이}세</p>
+    <p><b>겉모습</b> ${esc(d.복장)}, ${esc(d.머리)}, ${esc(d.특징)}</p>
+    <p><b>집안</b> ${esc(d.가족배경)} 출신. ${esc(d.부모)}. ${esc(d.가족사건)}</p>
+    <p><b>자란 곳</b> ${esc(d.유년환경)}</p>
+    <p><b>성격</b> ${esc(d.성격)}. 사람에 대해선 — ${esc(d.타인관)}</p>
+    <p><b>소중한 것</b> ${esc(d.소중한사람)} · ${esc(d.가치관)} · ${esc(d.소중한물건)}</p>
+    <p><b>지나온 해</b></p>
+    ${(d.사건 || []).map((e) => `<div class="yr"><span>${e.나이}세</span>${esc(e.내용)}</div>`).join("")}`;
+}
+
+function 탭보이기() {
+  $$("[data-pane]").forEach((el) => { el.hidden = el.dataset.pane !== S.tab; });
+  $$('[role="tab"]').forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === S.tab));
+}
+function 역할설명() {
+  const r = S.data.roles[$("#c-role").value];
+  $("#role-desc").textContent = r ? `${r.emoji} ${r.special} — ${r.desc}\n주요 스킬: ${r.skills.join(", ")}` : "";
+}
+
+// ---------------- 동작 ----------------
+async function 보내기(action, body, 말 = true) {
+  const r = await api(`api/trpg/${action}`, body || {});
+  const 결과 = r.result;
+  if (말 && typeof 결과 === "string") 적(꾸밈(결과));
+  else if (말 && 결과?.text) 적(꾸밈(결과.text));
+  await load();
+  return 결과;
+}
+
+function 판정글(r) {
+  let 머리 = r.성공 ? "✅ 성공" : "❌ 실패";
+  if (r.대성공) 머리 = "💥 대성공! " + 머리;
+  if (r.펌블) 머리 = "💀 펌블! " + 머리;
+  return 꾸밈(`**${r.이름}** — ${r.식}\n= **${r.총합}** vs ${r.난이도} ${r.목표} → ${머리}`);
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button");
+  if (!t) return;
+
+  if (t.dataset.tab) { S.tab = t.dataset.tab; 탭보이기(); return; }
+  if (t.dataset.rule) { S.rule = t.dataset.rule; 규칙그리기(); return; }
+  if (t.dataset.cat) { S.cat = t.dataset.cat; $$("#shop-tabs button").forEach((b) => b.setAttribute("aria-selected", b === t)); 상점(); return; }
+  if (t.dataset.buy) return run(() => 보내기(t.dataset.act, { name: t.dataset.buy, qty: 1 }));
+  if (t.dataset.equip) return run(() => 보내기("equip", { name: t.dataset.equip }));
+  if (t.dataset.cyrm) return run(() => 보내기("cyberRemove", { name: t.dataset.cyrm }));
+
+  const id = t.id;
+  if (id === "c-make") return run(async () => {
+    await 보내기("create", { name: $("#c-name").value.trim(), role: $("#c-role").value }, false);
+    toast("캐릭터를 만들었습니다.");
+  });
+  if (id === "c-link") return run(async () => {
+    const r = await 보내기("createLinked", { role: $("#c-role").value, name: $("#c-name").value.trim() });
+    toast("RPG 캐릭터와 연동했습니다.");
+  });
+  if (id === "r-go") return run(async () => {
+    const r = await 보내기("roll", {
+      stat: $("#r-stat").value, skill: $("#r-skill").value,
+      difficulty: $("#r-diff").value, modifier: +$("#r-mod").value || 0,
+    }, false);
+    적(판정글(r));
+  });
+  if (id === "d-go") return run(async () => {
+    const r = await 보내기("drive", { situation: $("#d-sit").value, vehicle: $("#d-car").value }, false);
+    let s = `🏍️ **${r.이름}** — ${r.상황}${r.차량 ? ` (${r.차량})` : ""}\n`
+      + `1D10(${r.기록}) + REF ${r.REF} + 운전 ${r.스킬레벨} = **${r.총합}** vs ${r.목표} → ${r.성공 ? "✅ 성공" : "❌ 실패"}`;
+    if (r.충돌) s += `\n💥 **충돌!** 피해 ${r.충돌.피해식} = **${r.충돌.피해}**`;
+    적(꾸밈(s));
+  });
+  if (id === "s-go") return run(async () => {
+    const r = await 보내기("sanity", {}, false);
+    적(꾸밈(`🧠 **${r.이름}** 자제력 (남은 인간성 ${r.남은인간성})\n1D10(${r.기록}) + COOL ${r.COOL} = **${r.총합}** vs ${r.목표} → `
+      + (r.성공 ? "✅ 아직 사람이다" : "❌ **이성을 잃었다**")));
+  });
+  if (id === "i-me") return run(async () => {
+    const r = await 보내기("initiative", {}, false);
+    적(꾸밈(`🎲 **${r.이름}** 이니셔티브 1D10(${r.주사위}) + REF ${r.REF} = **${r.값}**`));
+  });
+  if (id === "i-all") return run(async () => {
+    await api("api/trpg/initiative", {});
+    for (const x of S.me.npcs) await api("api/trpg/initiative", { npc: x.name });
+    await load(); 적("🎲 전원 이니셔티브를 굴렸습니다.");
+  });
+  if (id === "i-clr") return run(() => 보내기("initiativeClear", {}));
+  if (id === "n-add") return run(() => 보내기("npcAdd", {
+    name: $("#n-name").value.trim() || "적", body: +$("#n-body").value, ref: +$("#n-ref").value,
+    skill: +$("#n-skill").value, armor: +$("#n-armor").value,
+  }));
+  if (id === "a-go") return run(() => 보내기("attack", {
+    target: $("#a-target").value, weapon: $("#a-weapon").value,
+    range: $("#a-range").value, burst: +$("#a-burst").value || 1, modifier: +$("#a-mod").value || 0,
+  }));
+  if (id === "m-go") return run(() => 보내기("melee", {
+    technique: $("#m-tech").value, target: $("#m-target").value,
+  }));
+  if (id === "h-full") return run(() => 보내기("heal", {}));
+  if (id === "h-stab") return run(async () => {
+    const r = await 보내기("stabilize", { target: "me" }, false);
+    적(꾸밈(`🩺 **${r.의사}** → ${r.환자}\n1D10(${r.주사위}) + TECH ${r.TECH} + 의료 ${r.스킬레벨} = **${r.총합}** vs ${r.목표} → `
+      + (r.성공 ? "✅ 안정화 성공" : "❌ 실패")));
+  });
+  if (id === "h-go") return run(async () => {
+    const r = await 보내기("damage", { target: "me", amount: +$("#h-dmg").value || 0 }, false);
+    let s = `**${r.이름}** 피해 ${r.입은피해} → 누적 ${r.누적피해} (${r.상태})`;
+    if (r.스턴세이브) s += `\n스턴 세이브 ${r.스턴세이브.주사위} vs ${r.스턴세이브.목표} → ${r.스턴세이브.성공 ? "버텼다" : "**기절**"}`;
+    if (r.데스세이브) s += `\n💀 데스 세이브 ${r.데스세이브.주사위} vs ${r.데스세이브.목표} → ${r.데스세이브.성공 ? "살았다" : "**사망**"}`;
+    적(꾸밈(s));
+  });
+  if (id === "net-make") return run(() => 보내기("netCreate", {
+    name: $("#net-name").value.trim() || "무명 시스템", difficulty: $("#net-diff").value,
+  }, false).then(() => toast("시스템을 만들었습니다.")));
+  if (id === "net-run") return run(() => 보내기("netRun", {
+    system: $("#net-sys").value, program: $("#net-prog").value,
+  }));
+  if (id === "net-clr") return run(() => 보내기("netClear", {}));
+  if (id === "cy-go") return run(() => 보내기("cyberInstall", { name: $("#cy-pick").value }));
+  if (id === "ma-go") return run(() => 보내기("learnMartial", { name: $("#ma-pick").value }));
+  if (id === "sk-go") return run(() => 보내기("skill", { name: $("#sk-name").value.trim(), level: +$("#sk-lv").value }));
+  if (id === "x-go") return run(() => 보내기("exchange", { dir: $("#x-dir").value, qty: +$("#x-qty").value || 0 }));
+  if (id === "lp-go") return run(async () => { await 보내기("lifepath", {}, false); toast("과거를 새로 굴렸습니다."); });
+  if (id === "ln-del") return run(async () => {
+    if (!confirm("캐릭터를 정말 지울까요? 스킬·장비·사이버웨어가 전부 사라집니다.")) return;
+    await 보내기("delete", {}, false); S.log = []; $("#log-box").hidden = true; toast("캐릭터를 지웠습니다.");
+  });
+});
+
+function 기술설명() {
+  const d = S.data?.techniques?.[$("#m-tech")?.value];
+  const el = $("#m-desc");
+  if (!el) return;
+  el.textContent = d ? (d.desc + (d.damage ? ` · 피해 ${d.damage}` : " · 피해 없음")) : "";
+}
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "c-role") 역할설명();
+  if (e.target.id === "m-tech") 기술설명();
+});
+
+run(load);
+</script>
+</body>
+</html>
