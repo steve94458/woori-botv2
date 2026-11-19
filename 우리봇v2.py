@@ -1517,7 +1517,7 @@ def _유저채굴기_검사(uid, 코드):
     "돈", "순위", "출석", "송금",
     "매수", "매도", "주식", "업종", "내주식", "주식추가", "주식제거", "레버리지",
     "채굴", "채굴기추가", "채굴기제거",
-    "대출", "상환", "복권", "허세", "칭호",
+    "대출", "상환", "복권", "허세", "칭호", "블랙잭",
 }
  
  
@@ -1980,6 +1980,278 @@ async def 정보(ctx, *, 글: str = None):
         embed.set_footer(text=f"마지막으로 쓴 사람: {쓴이.display_name if 쓴이 else '알 수 없음'} · {(행[2] or '')[:16].replace('T', ' ')}")
     await ctx.reply(embed=embed)
     _로그(ctx, "정보", f"보기 {이름}")
+
+
+# ------------------------------------------------------------
+# 블랙잭 — !블랙잭 [금액/전부]. 6덱, 딜러 소프트 17 스탠드, 블랙잭 3:2, 딜러 피크(블랙잭이면 바로 끝).
+# 버튼: 히트·스탠드·더블다운 (스플릿·보험 없음). 건 돈은 시작할 때 먼저 빼고, 끝나면 돌려준다.
+# 진행 중인 판은 blackjack_games 에 적어 두고, 봇이 재시작되면 on_ready 에서 건 돈을 돌려준다.
+# ------------------------------------------------------------
+블랙잭_최소 = 1_000
+블랙잭_최대 = 100_000_000
+블랙잭_덱수 = 6
+블랙잭_시간 = 120          # 이 초 동안 안 누르면 스탠드로 끝낸다
+_블랙잭_무늬 = ("♠", "♥", "♦", "♣")
+_블랙잭_끗 = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
+_블랙잭_판 = {}            # user_id -> 블랙잭판
+
+cursor.execute("CREATE TABLE IF NOT EXISTS blackjack_games (user_id TEXT PRIMARY KEY, bet TEXT NOT NULL, started TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS blackjack_stats (user_id TEXT PRIMARY KEY, games INTEGER NOT NULL DEFAULT 0, "
+               "wins INTEGER NOT NULL DEFAULT 0, blackjacks INTEGER NOT NULL DEFAULT 0, net TEXT NOT NULL DEFAULT '0')")
+conn.commit()
+
+
+def _블랙잭_점수(패):
+    """(점수, 소프트인가) — A 하나를 11로 셀 수 있으면 소프트"""
+    합 = sum(10 if k in ("J", "Q", "K") else 1 if k == "A" else int(k) for k, _ in 패)
+    if any(k == "A" for k, _ in 패) and 합 + 10 <= 21:
+        return 합 + 10, True
+    return 합, False
+
+
+def _블랙잭인가(패):
+    return len(패) == 2 and _블랙잭_점수(패)[0] == 21
+
+
+def _블랙잭_글(패, 숨김=False):
+    if 숨김:
+        return f"`{패[0][0]}{패[0][1]}` `??`"
+    return " ".join(f"`{k}{m}`" for k, m in 패)
+
+
+class 블랙잭판:
+    def __init__(self, user_id, 이름, 베팅):
+        self.uid, self.이름, self.베팅 = user_id, 이름, 베팅
+        self.신발 = [(k, m) for _ in range(블랙잭_덱수) for m in _블랙잭_무늬 for k in _블랙잭_끗]
+        random.shuffle(self.신발)
+        self.나 = [self.신발.pop(), self.신발.pop()]
+        self.딜러 = [self.신발.pop(), self.신발.pop()]
+        self.더블 = False
+        self.끝 = None          # None 이면 진행 중. 끝나면 (결과글, 돌려줄 돈)
+        self.잠금 = asyncio.Lock()
+
+    def 화면(self):
+        내점수, 소프트 = _블랙잭_점수(self.나)
+        진행 = self.끝 is None
+        e = discord.Embed(title=f"🃏 블랙잭 — {self.이름}", color=0x2ECC71 if 진행 else 0x95A5A6)
+        if 진행:
+            보이는 = _블랙잭_점수(self.딜러[:1])[0]
+            e.add_field(name=f"딜러 ({보이는} + ?)", value=_블랙잭_글(self.딜러, 숨김=True), inline=False)
+        else:
+            e.add_field(name=f"딜러 ({_블랙잭_점수(self.딜러)[0]})", value=_블랙잭_글(self.딜러), inline=False)
+        e.add_field(name=f"나 ({'소프트 ' if 소프트 and 내점수 < 21 else ''}{내점수})", value=_블랙잭_글(self.나), inline=False)
+        e.add_field(name="베팅", value=_큰돈(self.베팅) + (" (더블)" if self.더블 else ""), inline=True)
+        if not 진행:
+            글, 돌려줌 = self.끝
+            손익 = 돌려줌 - self.베팅
+            e.add_field(name="결과", value=f"{글}\n{_부호돈(손익)}", inline=True)
+        else:
+            e.set_footer(text=f"{블랙잭_시간}초 안에 안 누르면 스탠드")
+        return e
+
+    def 딜러차례(self):
+        while True:
+            점수, _ = _블랙잭_점수(self.딜러)
+            if 점수 >= 17:          # 소프트 17 에서도 멈춘다
+                return
+            self.딜러.append(self.신발.pop())
+
+    def 정산(self):
+        """결과를 정한다 (돈은 _블랙잭_마무리 에서)"""
+        나, _ = _블랙잭_점수(self.나)
+        딜러, _ = _블랙잭_점수(self.딜러)
+        b = self.베팅
+        if _블랙잭인가(self.나) and not self.더블:
+            if _블랙잭인가(self.딜러):
+                self.끝 = ("둘 다 블랙잭 — 무승부", b)
+            else:
+                self.끝 = ("🎉 블랙잭! (1.5배)", b + b * 3 // 2)
+        elif _블랙잭인가(self.딜러):
+            self.끝 = ("딜러 블랙잭 — 졌어요", 0)
+        elif 나 > 21:
+            self.끝 = ("💥 버스트 — 졌어요", 0)
+        elif 딜러 > 21:
+            self.끝 = ("딜러 버스트 — 이겼어요!", b * 2)
+        elif 나 > 딜러:
+            self.끝 = ("이겼어요!", b * 2)
+        elif 나 < 딜러:
+            self.끝 = ("졌어요", 0)
+        else:
+            self.끝 = ("무승부", b)
+
+
+def _블랙잭_마무리(판):
+    """돈 돌려주고 기록. 판.끝 이 정해진 뒤 한 번만"""
+    글, 돌려줌 = 판.끝
+    if 돌려줌:
+        _돈(판.uid, 돌려줌, 커밋=False)
+    이김 = 1 if 돌려줌 > 판.베팅 else 0
+    cursor.execute("INSERT INTO blackjack_stats (user_id, games, wins, blackjacks, net) VALUES (?, 1, ?, ?, ?) "
+                   "ON CONFLICT(user_id) DO UPDATE SET games = games + 1, wins = wins + excluded.wins, "
+                   "blackjacks = blackjacks + excluded.blackjacks, net = CAST(CAST(net AS INTEGER) + ? AS TEXT)",
+                   (판.uid, 이김, 1 if 글.startswith("🎉") else 0, str(돌려줌 - 판.베팅), 돌려줌 - 판.베팅))
+    cursor.execute("DELETE FROM blackjack_games WHERE user_id = ?", (판.uid,))
+    conn.commit()
+    _블랙잭_판.pop(판.uid, None)
+    print(f"[{datetime.now()}] 블랙잭 {판.이름}: {글} 베팅 {판.베팅:,} → {돌려줌:,}")
+
+
+def 블랙잭_환불():
+    """봇이 꺼지며 남은 판의 건 돈을 돌려준다. 프로세스가 켜질 때 한 번만 (on_ready 는 재연결 때도 불려서
+    진행 중인 판을 돌려주면 이중 지급이 된다). 돌려준 판 수"""
+    cursor.execute("SELECT user_id, bet FROM blackjack_games")
+    행들 = cursor.fetchall()
+    for uid, bet in 행들:
+        _돈(uid, int(bet), 커밋=False)
+    cursor.execute("DELETE FROM blackjack_games")
+    conn.commit()
+    if 행들:
+        print(f"[{datetime.now()}] 블랙잭 재시작 환불 {len(행들)}판")
+    return len(행들)
+
+
+블랙잭_환불()
+
+
+def _부호돈(n):
+    return "±0원" if n == 0 else ("+" if n > 0 else "-") + _큰돈(abs(n))
+
+
+class 블랙잭버튼(discord.ui.View):
+    def __init__(self, 판):
+        super().__init__(timeout=블랙잭_시간)
+        self.판 = 판
+        self.message = None
+        self._버튼정리()
+
+    def _버튼정리(self):
+        판 = self.판
+        for b in self.children:
+            b.disabled = 판.끝 is not None
+        if 판.끝 is None and (len(판.나) != 2 or 판.더블):
+            self.더블다운.disabled = True
+
+    async def interaction_check(self, interaction):
+        if str(interaction.user.id) != self.판.uid:
+            await interaction.response.send_message("남의 판이에요. `!블랙잭 [금액]`으로 직접 해 보세요.", ephemeral=True)
+            return False
+        return True
+
+    async def _끝내기(self, interaction=None):
+        판 = self.판
+        판.딜러차례() if _블랙잭_점수(판.나)[0] <= 21 else None
+        판.정산()
+        _블랙잭_마무리(판)
+        self._버튼정리()
+        self.stop()
+        if interaction:
+            await interaction.response.edit_message(embed=판.화면(), view=self)
+        elif self.message:
+            try:
+                await self.message.edit(embed=판.화면(), view=self)
+            except discord.HTTPException:
+                pass
+
+    @discord.ui.button(label="히트", style=discord.ButtonStyle.primary, emoji="➕")
+    async def 히트(self, interaction: discord.Interaction, button: discord.ui.Button):
+        판 = self.판
+        async with 판.잠금:
+            if 판.끝 is not None:
+                return await interaction.response.defer()
+            판.나.append(판.신발.pop())
+            if _블랙잭_점수(판.나)[0] >= 21:
+                return await self._끝내기(interaction)
+            self._버튼정리()
+            await interaction.response.edit_message(embed=판.화면(), view=self)
+
+    @discord.ui.button(label="스탠드", style=discord.ButtonStyle.secondary, emoji="✋")
+    async def 스탠드(self, interaction: discord.Interaction, button: discord.ui.Button):
+        async with self.판.잠금:
+            if self.판.끝 is not None:
+                return await interaction.response.defer()
+            await self._끝내기(interaction)
+
+    @discord.ui.button(label="더블다운", style=discord.ButtonStyle.success, emoji="💰")
+    async def 더블다운(self, interaction: discord.Interaction, button: discord.ui.Button):
+        판 = self.판
+        async with 판.잠금:
+            if 판.끝 is not None or len(판.나) != 2 or 판.더블:
+                return await interaction.response.defer()
+            if not _돈(판.uid, -판.베팅, 커밋=False):
+                return await interaction.response.send_message(
+                    f"더블다운하려면 {_큰돈(판.베팅)}이 더 있어야 해요.", ephemeral=True)
+            판.베팅 *= 2
+            판.더블 = True
+            cursor.execute("UPDATE blackjack_games SET bet = ? WHERE user_id = ?", (str(판.베팅), 판.uid))
+            conn.commit()
+            판.나.append(판.신발.pop())        # 더블다운은 한 장만 받고 끝
+            await self._끝내기(interaction)
+
+    async def on_timeout(self):
+        async with self.판.잠금:
+            if self.판.끝 is None:
+                await self._끝내기()
+
+
+@bot.command(help="!블랙잭 [금액/전부] — 딜러와 블랙잭 (블랙잭 1.5배) · !블랙잭 기록 [@유저] · !블랙잭 규칙")
+async def 블랙잭(ctx, 금액: str = None, 대상: str = None):
+    uid = str(ctx.author.id)
+    if 금액 == "규칙":
+        return await ctx.reply(
+            "🃏 **블랙잭 규칙**\n"
+            "• 21에 가까운 쪽이 이겨요. 21을 넘으면 버스트(짐). J·Q·K는 10, A는 1 또는 11\n"
+            f"• {블랙잭_덱수}덱. 딜러는 17 이상이면 멈춰요 (소프트 17도 멈춤)\n"
+            "• 처음 두 장이 21이면 블랙잭 — 건 돈의 1.5배를 더 줘요. 딜러도 블랙잭이면 무승부\n"
+            "• 딜러가 처음부터 블랙잭이면 바로 끝나요\n"
+            "• **히트** 한 장 더 · **스탠드** 그만 · **더블다운** 건 돈을 두 배로 하고 딱 한 장만 (처음 두 장일 때만)\n"
+            f"• 베팅 {_큰돈(블랙잭_최소)} ~ {_큰돈(블랙잭_최대)}, {블랙잭_시간}초 안에 안 누르면 스탠드")
+    if 금액 in ("기록", "전적"):
+        대상id = uid
+        이름 = ctx.author.display_name
+        m = re.fullmatch(r"<@!?(\d+)>", 대상 or "")
+        if m:
+            대상id = m[1]
+            멤버 = ctx.guild.get_member(int(대상id)) if ctx.guild else None
+            이름 = 멤버.display_name if 멤버 else "알 수 없음"
+        cursor.execute("SELECT games, wins, blackjacks, net FROM blackjack_stats WHERE user_id = ?", (대상id,))
+        행 = cursor.fetchone()
+        if not 행:
+            return await ctx.reply(f"{이름} 님은 아직 블랙잭을 안 했어요.")
+        판수, 승, 블, 순 = 행[0], 행[1], 행[2], int(행[3])
+        return await ctx.reply(f"🃏 {이름} 님 블랙잭 기록: {판수:,}판 {승:,}승 (승률 {승 / 판수 * 100:.1f}%), "
+                               f"블랙잭 {블:,}번, 순손익 {_부호돈(순)}")
+    if not 금액:
+        return await ctx.reply(f"사용법: `!블랙잭 [금액/전부]` ({_큰돈(블랙잭_최소)} ~ {_큰돈(블랙잭_최대)}) · "
+                               "`!블랙잭 규칙` · `!블랙잭 기록`")
+    if uid in _블랙잭_판:
+        return await ctx.reply("이미 하고 있는 판이 있어요. 그 판부터 끝내 주세요.")
+    get_or_create_user(uid)
+    if 금액 in ("전부", "올인"):
+        베팅 = min(_현금(uid), 블랙잭_최대)
+    else:
+        try:
+            베팅 = int(금액.replace(",", ""))
+        except ValueError:
+            return await ctx.reply("금액은 숫자나 `전부`로 적어주세요.")
+    if not (블랙잭_최소 <= 베팅 <= 블랙잭_최대):
+        return await ctx.reply(f"베팅은 {_큰돈(블랙잭_최소)} ~ {_큰돈(블랙잭_최대)}까지예요.")
+    if not _돈(uid, -베팅, 커밋=False):
+        return await ctx.reply(f"돈이 모자라요. (현금 {_큰돈(_현금(uid))})")
+    cursor.execute("INSERT OR REPLACE INTO blackjack_games VALUES (?, ?, ?)",
+                   (uid, str(베팅), datetime.now().isoformat(timespec="seconds")))
+    conn.commit()
+    판 = 블랙잭판(uid, ctx.author.display_name, 베팅)
+    _블랙잭_판[uid] = 판
+    _로그(ctx, "블랙잭", f"{베팅:,}원")
+    뷰 = 블랙잭버튼(판)
+    # 블랙잭 확인: 내가 블랙잭이거나, 딜러가 블랙잭(피크)이면 바로 끝
+    if _블랙잭인가(판.나) or _블랙잭인가(판.딜러):
+        판.정산()
+        _블랙잭_마무리(판)
+        뷰._버튼정리()
+        뷰.stop()
+        return await ctx.reply(embed=판.화면(), view=뷰)
+    뷰.message = await ctx.reply(embed=판.화면(), view=뷰)
 
 
 종목이름_최대 = 12        # !주식추가 종목 이름 글자 수 (2026-11-19 20 → 12. 그 전에 만든 긴 이름은 그대로)
