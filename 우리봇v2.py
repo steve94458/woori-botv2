@@ -359,6 +359,19 @@ def get_or_create_user(user_id):
 사용자_이름 = {}
 client = genai.Client(api_key=GEMINI_API_KEY)
 통합AI토큰=0
+제미나이_재시도 = (3, 8)           # 구글 서버가 바쁘면(500·503) 이만큼 초 쉬고 다시 (스레드 안에서 부름)
+제미나이_바쁨 = "AI 서버(구글)가 지금 바빠서 답을 못 받았어요. 잠시 후 다시 시도해 주세요!"
+
+def 제미나이요청(**kw):
+    """client.models.generate_content + 구글 쪽 일시 오류(500·503) 재시도. run_in_executor 로 부른다"""
+    for 쉼 in (*제미나이_재시도, None):
+        try:
+            return client.models.generate_content(**kw)
+        except APIError as e:
+            if 쉼 is None or e.code not in (500, 503):
+                raise
+            print(f"[{datetime.now()}] Gemini {e.code} — {쉼}초 뒤 다시")
+            time.sleep(쉼)
 
 최대_대출금 = 100_000_000       # 1억
 대출_이자율 = 0.02              # 10분마다 원금의 2% (단리)
@@ -1002,7 +1015,7 @@ async def on_message(message):
  
                 # ===== 2~3. 요청 → 함수 호출 → 결과 전달을 반복한다 (검색 → 페이지 읽기처럼 이어서 부를 수 있게) =====
                 def _요청(내용):
-                    return client.models.generate_content(
+                    return 제미나이요청(
                         model="gemini-3.5-flash-lite", config=AI설정, contents=내용)
 
                 내용 = 대화기록[user_id][-10:] + [새메시지]
@@ -1077,6 +1090,8 @@ async def on_message(message):
                 await message.channel.send("현재 봇의 요청 제한을 초과했습니다. 잠시 후(약 15초 뒤) 다시 메시지를 보내주세요!")
             elif e.code == 499:
                 await message.channel.send("모종의 이유로 작업이 취소되었습니다. 다시 시도해주세요!")
+            elif e.code in (500, 503):
+                await message.channel.send(제미나이_바쁨)
             else:
                 await message.channel.send(f" 오류가 발생했습니다: {e.message}")
         except Exception as e:
@@ -1132,6 +1147,15 @@ async def on_command_error(ctx, error):
         print(f"[{datetime.now()} {ctx.author}가 알 수 없는 명령어 사용]")
     elif isinstance(error, commands.MemberNotFound):
         await ctx.reply(f"`{error.argument}` 유저를 찾지 못했어요. 멘션이나 디스코드 ID로 적어 주세요.")
+    elif isinstance(error, commands.CommandInvokeError) and isinstance(error.original, APIError):
+        e = error.original
+        print(f"[{datetime.now()} {ctx.author}의 !{ctx.command} — Gemini 오류 {e.code}: {e.message}]")
+        if e.code in (500, 503):
+            await ctx.reply(제미나이_바쁨)
+        elif e.code == 429:
+            await ctx.reply("AI 요청 제한을 넘었어요. 15초쯤 뒤에 다시 해 주세요!")
+        else:
+            await ctx.reply(f"AI 오류가 났어요: {e.message}")
     else:
         raise error
 
@@ -3969,7 +3993,7 @@ async def AI기억(ctx):
             # Gemini로 프롬프트 영어로 변환
             response = await loop.run_in_executor(
                 None,
-                lambda: client.models.generate_content(
+                lambda: 제미나이요청(
                     model="gemini-3.5-flash-lite",
                     contents=[types.Content(role="user", parts=[
                         types.Part(text=f"이 내용을 2000자 이내로 정리해줘. 같은 이름의 사용자가 있으면 하나로 엮어서 알려줘. 2000자는 공백, 줄바꿈 모두 포함이야. 이름의 일부분만 같으면 그건 같은 사람이 아니야.:\n{대화기록}")
@@ -3988,7 +4012,7 @@ async def 그림(ctx, *, 프롬프트: str):
         # Gemini로 프롬프트 영어로 변환
         response = await loop.run_in_executor(
             None,
-            lambda: client.models.generate_content(
+            lambda: 제미나이요청(
                 model="gemini-3.5-flash-lite",
                 contents=[types.Content(role="user", parts=[
                     types.Part(text=f"다음 내용을 이미지 생성 AI에 넣을 영어 프롬프트로 변환해줘. 프롬프트만 출력하고 다른 말은 하지마. 만약 프롬포트에 '네가 생각하는 널 그려줘'나 '너가 생각하는 널 그려줘.'같은 말이 있을 경우 네 기억에서 끌어와서 그에 맞게 변경해서 작성해. 대화 기록:{대화기록}, 프롬포트: {프롬프트}")
