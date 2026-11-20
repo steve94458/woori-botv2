@@ -49,6 +49,10 @@ cursor.execute("""
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
 """)
+try:
+    cursor.execute("ALTER TABLE ai_memory ADD COLUMN label TEXT")      # 라벨: 매 메시지에 라벨 목록만 보내고, 내용은 recall 로 연다
+except sqlite3.OperationalError:
+    pass
 conn.commit()
 
 # 픽시브 객체는 봇에서 넘겨받음
@@ -65,6 +69,7 @@ MC_포트 = 25565
 # AI 장기 기억
 최대_기억_개수 = 30
 최대_기억_길이 = 200
+최대_라벨_길이 = 20
 
 # 대출 (봇 파일의 설정과 반드시 일치시킬 것)
 최대_대출금 = 100_000_000
@@ -1264,7 +1269,9 @@ def 마크상태():
         "반대로 한 번 쓰고 버릴 정보(오늘 날씨, 방금 계산한 값 등)는 저장하지 않는다. "
         "이미 비슷한 내용이 저장돼 있으면 중복 저장하지 말고, "
         "내용이 달라졌다면 먼저 forget 으로 옛 기억을 지운 뒤 새로 저장한다. "
-        "한 문장으로 간결하게 적는다."
+        "한 문장으로 간결하게 적는다. "
+        "기억마다 짧은 라벨을 붙인다 — 매 메시지에 라벨 목록만 보이고 내용은 recall 로 열어야 보이니, "
+        "라벨만 보고도 무슨 기억인지 알 수 있게 쓴다."
     ),
     parameters={
         "type": "object",
@@ -1272,9 +1279,13 @@ def 마크상태():
             "content": {
                 "type": "string",
                 "description": "기억할 내용. 한 문장. 예: '마인크래프트 서버를 운영한다'",
-            }
+            },
+            "label": {
+                "type": "string",
+                "description": f"내용을 한눈에 알 수 있는 짧은 라벨({최대_라벨_길이}자 이하). 예: '운영하는 서버', '좋아하는 음식', '시험 일정'",
+            },
         },
-        "required": ["content"],
+        "required": ["content", "label"],
     },
 )
 
@@ -1282,12 +1293,22 @@ def 마크상태():
 기억불러오기_선언 = types.FunctionDeclaration(
     name="recall",
     description=(
-        "이 유저에 대해 저장해 둔 장기 기억을 모두 불러온다. "
-        "유저가 '나에 대해 뭘 알아?', '내가 뭐 기억해달라고 했지?' 라고 묻거나, "
-        "과거에 들었을 법한 개인 정보가 필요할 때 사용한다. "
-        "각 기억에는 번호가 붙어 있으며, 그 번호로 forget 을 호출할 수 있다."
+        "이 유저에 대해 저장해 둔 장기 기억의 내용을 연다. "
+        "시스템 프롬프트의 '장기 기억 라벨' 목록에서 지금 대화에 쓸모 있어 보이는 라벨이 있으면 "
+        "그 번호를 memory_ids 로 넘겨 내용을 확인한 뒤 답한다 (라벨만 보고 내용을 지어내지 않는다). "
+        "유저가 '나에 대해 뭘 알아?', '내가 뭐 기억해달라고 했지?' 라고 물으면 memory_ids 없이 불러 전부 본다. "
+        "각 기억의 번호로 forget 을 호출할 수 있다."
     ),
-    parameters={"type": "object", "properties": {}},
+    parameters={
+        "type": "object",
+        "properties": {
+            "memory_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "열어 볼 기억 번호들 (라벨 목록의 #번호). 비우면 전부",
+            }
+        },
+    },
 )
 
 
@@ -1312,11 +1333,21 @@ def 마크상태():
 )
 
 
-def 기억저장(user_id, content):
+def _라벨(label, content):
+    """라벨이 없는 옛 기억은 내용 앞부분을 라벨로"""
+    라벨 = " ".join((label or "").split())
+    if not 라벨:
+        라벨 = " ".join((content or "").split())
+        라벨 = 라벨 if len(라벨) <= 최대_라벨_길이 else 라벨[:최대_라벨_길이 - 1] + "…"
+    return 라벨[:최대_라벨_길이]
+
+
+def 기억저장(user_id, content, label=None):
     내용 = (content or "").strip()
     if not 내용:
         return "저장할 내용이 비어 있습니다."
     내용 = 내용[:최대_기억_길이]
+    라벨 = _라벨(label, 내용)
 
     cursor.execute("SELECT id, content FROM ai_memory WHERE user_id = ?", (user_id,))
     기존 = cursor.fetchall()
@@ -1333,26 +1364,37 @@ def 기억저장(user_id, content):
         )
 
     cursor.execute(
-        "INSERT INTO ai_memory (user_id, content) VALUES (?, ?)", (user_id, 내용)
+        "INSERT INTO ai_memory (user_id, content, label) VALUES (?, ?, ?)", (user_id, 내용, 라벨)
     )
     conn.commit()
     새_id = cursor.lastrowid
-    return f"기억했습니다. (#{새_id}: {내용}) — 현재 {len(기존) + 1}/{최대_기억_개수}개"
+    return f"기억했습니다. (#{새_id} [{라벨}]: {내용}) — 현재 {len(기존) + 1}/{최대_기억_개수}개"
 
 
-def 기억불러오기(user_id):
+def 기억불러오기(user_id, memory_ids=None):
     cursor.execute(
-        "SELECT id, content, created_at FROM ai_memory WHERE user_id = ? ORDER BY id",
+        "SELECT id, content, created_at, label FROM ai_memory WHERE user_id = ? ORDER BY id",
         (user_id,),
     )
     rows = cursor.fetchall()
     if not rows:
         return "이 유저에 대해 저장된 기억이 없습니다."
 
-    줄 = [f"#{i}: {c}  (저장: {t[:10]})" for i, c, t in rows]
-    return (
-        f"저장된 기억 {len(rows)}/{최대_기억_개수}개:\n" + "\n".join(줄)
-    )
+    전체 = len(rows)
+    없는 = []
+    if memory_ids:
+        try:
+            고른 = {int(x) for x in (memory_ids if isinstance(memory_ids, (list, tuple)) else [memory_ids])}
+        except (ValueError, TypeError):
+            return "기억 번호는 숫자여야 합니다."
+        있는 = {r[0] for r in rows}
+        없는 = sorted(고른 - 있는)
+        rows = [r for r in rows if r[0] in 고른]
+    줄 = [f"#{i} [{_라벨(l, c)}]: {c}  (저장: {(t or '')[:10]})" for i, c, t, l in rows]
+    끝 = f"\n없는 번호: {', '.join(f'#{x}' for x in 없는)}" if 없는 else ""
+    if memory_ids:
+        return (f"고른 기억 {len(rows)}개:\n" + "\n".join(줄) if 줄 else "고른 번호의 기억이 없습니다.") + 끝
+    return f"저장된 기억 {전체}/{최대_기억_개수}개:\n" + "\n".join(줄)
 
 
 def 기억삭제(user_id, memory_id):
@@ -1381,6 +1423,15 @@ def 기억_전체삭제(user_id):
     cursor.execute("DELETE FROM ai_memory WHERE user_id = ?", (user_id,))
     conn.commit()
     return cursor.rowcount
+
+
+def 기억_라벨목록(user_id):
+    """봇이 매 메시지 시스템 프롬프트에 넣는 라벨 목록 (내용은 안 넣는다 — AI 가 recall 로 연다). 없으면 ''"""
+    cursor.execute("SELECT id, content, label FROM ai_memory WHERE user_id = ? ORDER BY id", (user_id,))
+    rows = cursor.fetchall()
+    if not rows:
+        return ""
+    return ", ".join(f"#{i} {_라벨(l, c)}" for i, c, l in rows)
 
 
 def 기억_요약(user_id):
