@@ -897,6 +897,29 @@ class 채굴기등록확인(discord.ui.View):
 
 # 이벤트/설정/함수(def) 등록 구역
 
+AI_그림보기툴 = {"search_pixiv"}                               # 받은 그림을 함수 결과에 붙여 AI도 보게 하는 툴
+AI_그림_최대변 = 1536                                         # AI에게 보낼 그림의 긴 변 (토큰·용량 아끼기)
+
+
+def _AI가볼그림(첨부):
+    """첨부 → (mime, 바이트) 또는 None. 그림은 크면 줄이고, 움짤(gif)은 첫 장면만. 동영상은 안 보낸다"""
+    이름 = (첨부.get("filename") or "").lower()
+    if not 이름.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+        return None
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(첨부["data"]))
+        im.seek(0)
+        im = im.convert("RGB")
+        im.thumbnail((AI_그림_최대변, AI_그림_최대변))
+        b = io.BytesIO()
+        im.save(b, "JPEG", quality=88)
+        return "image/jpeg", b.getvalue()
+    except Exception as e:
+        print(f"[{datetime.now()}] AI 그림 변환 실패: {e}")
+        return None
+
+
 AI_최대툴횟수 = 5                                              # 한 메시지에서 툴을 이어 부를 수 있는 횟수
 스레드툴 = {"download_song", "search_pixiv", "web_search", "read_webpage",
           "mc_player_info", "mc_online_players", "mc_all_players", "mc_player_inventory", "mc_link_account", "get_mc_server_status"}   # DB 를 안 쓰고 오래 걸리는 툴
@@ -1005,8 +1028,11 @@ async def on_message(message):
                             결과텍스트 = await 결과텍스트
                         if 첨부:
                             첨부파일 = discord.File(io.BytesIO(첨부["data"]), filename=첨부["filename"])
+                        그림 = await loop.run_in_executor(None, _AI가볼그림, 첨부) if 호출.name in AI_그림보기툴 and 첨부 else None
                         응답들.append(types.Part(function_response=types.FunctionResponse(
-                            name=호출.name, response={"result": 결과텍스트})))
+                            name=호출.name, response={"result": 결과텍스트},
+                            parts=[types.FunctionResponsePart(inline_data=types.FunctionResponseBlob(
+                                mime_type=그림[0], data=그림[1]))] if 그림 else None)))
                     내용 = 내용 + [후보, types.Content(role="user", parts=응답들)]
 
             # ===== 4. 응답 전송 =====
