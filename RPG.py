@@ -4840,6 +4840,26 @@ class 전투뷰(discord.ui.View):
         self._구성()
 
     def _구성(self):
+        """버튼을 다시 짠다. custom_id 를 이름으로 고정하고 바로 다시 등록해서, 화면 수정이 아직 안 끝난
+        옛 버튼을 눌러도(자동 중엔 매 걸음 다시 짠다) 같은 버튼으로 받는다 — 안 그러면 discord.py 가
+        떨어진 옛 버튼이라며 버리고 '애플리케이션이 응답하지 않았어요'가 뜬다"""
+        self._구성하기()
+        본 = {}
+        for item in self.children:
+            if not hasattr(item, "custom_id") or getattr(item, "url", None):
+                continue
+            이름 = "select" if isinstance(item, discord.ui.Select) else (getattr(item, "label", None) or type(item).__name__)
+            이름 = f"{이름}|{getattr(item, 'emoji', '') or ''}"[:80]
+            본[이름] = 본.get(이름, -1) + 1
+            item.custom_id = f"rpg:{이름}:{본[이름]}"
+        m, 봇 = getattr(self, "_message", None), _봇.get("bot")
+        if m is not None and 봇 is not None and not self.is_finished():
+            try:
+                봇._connection.store_view(self, m.id)
+            except Exception as e:
+                print(f"[{datetime.now()}] RPG 버튼 등록 실패: {e}")
+
+    def _구성하기(self):
         self.clear_items()
         b = self.b
         if self.자동 and b.상태 in ("전투", "클리어"):
