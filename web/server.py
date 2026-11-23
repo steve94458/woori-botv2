@@ -991,6 +991,7 @@ def RPG내정보(request: Request):
                             for n, d in RPG.악세서리.items()],
             "hyper": (lambda h: {"rate": h[0], "until": h[1].isoformat(timespec="milliseconds")} if h[1] else None)(RPG.하이퍼버닝()),
             "pets": _펫정보(uid),
+            "stand": _스탠드정보(uid),
             "goldRate": RPG.골드_환율,
             "cash": RPG._현금(uid),
             "newAchievements": 새업적,
@@ -1008,6 +1009,8 @@ def _펫정보(uid):
     결과 = []
     for n, d in RPG.펫.items():
         p = 가진.get(n)
+        if d.get("숨김") and not p:
+            continue
         결과.append({
             "name": n, "nickname": p["별명"] if p else n, "emoji": d["이모지"], "price": d["price"], "desc": d["설명"],
             "owned": p is not None, "equipped": bool(p and p["장착"]),
@@ -1017,6 +1020,19 @@ def _펫정보(uid):
             "hpCost": 10 * ((p["체력lv"] if p else 0) + 1), "skillCost": 10 * ((p["능력lv"] if p else 0) + 1),
         })
     return 결과
+
+
+def _스탠드정보(uid):
+    st = RPG.내스탠드(uid)
+    return {
+        "disks": RPG.스탠드디스크수(uid),
+        "stand": ({"name": st["이름"], "level": st["레벨"], "exp": st["경험"], "next": st["다음"],
+                   "slots": RPG.스탠드능력칸(st["레벨"]), "abilities": [{"name": a["이름"], "desc": a.get("설명", "")} for a in st["능력들"]]}
+                  if st else None),
+        "pending": [{"id": r["id"], "kind": r["종류"], "text": r["내용"]} for r in RPG.스탠드요청목록(uid)],
+        "recent": [{"id": r["id"], "kind": r["종류"], "status": r["상태"], "note": r["메모"]}
+                   for r in RPG.스탠드요청목록(uid, None)[-5:] if r["상태"] != "대기"],
+    }
 
 
 def _친선전정보(d, uid):
@@ -1097,6 +1113,20 @@ async def RPG펫(action: str, request: Request):
         else:
             raise HTTPException(404, "없는 동작입니다.")
     return _결과(성공, r)
+
+
+@app.post("/api/rpg/stand")
+async def RPG스탠드(request: Request):
+    """스탠드 요청. kind = create(name, text) / ability(text)"""
+    uid, 몸 = await _rpg요청(request)
+    with _db락:
+        if 몸.get("kind") == "create":
+            성공, r = RPG.스탠드요청(uid, "생성", str(몸.get("text", "")), str(몸.get("name", "")))
+        elif 몸.get("kind") == "ability":
+            성공, r = RPG.스탠드요청(uid, "능력", str(몸.get("text", "")))
+        else:
+            raise HTTPException(404, "없는 동작입니다.")
+    return _결과(성공, {"id": r} if 성공 else r)
 
 
 @app.get("/api/rpg/shop")

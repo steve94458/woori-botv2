@@ -189,10 +189,24 @@ import discord
     "꿀꿀": "턴마다 75% 확률로 꿀꿀거린다 (끝)",
     "살찌기": "턴마다 20% 확률로 최대 체력의 100%를 회복",
     "튕기기": "턴마다 30% 확률로 다음 공격을 튕겨낸다 — 70%는 그래도 맞고, 30%는 공격한 쪽이 맞는다",
+    "파문": "25% 확률로 방어력을 꿰뚫는 파문 공격 (1.3배)",
+    "선라이트": "5턴마다 기를 모았다가 다음 턴 선라이트 옐로 오버드라이브 (방어 무시 3배 + 화상)",
+    "다음에네놈은": "25% 확률로 할 말을 맞혀 혼란에 빠뜨린다",
+    "크레커볼레": "5턴마다 클래커를 돌리다 다음 턴 크레커 볼레 (1.6배 2연타 + 기절)",
+    "오라러쉬": "30% 확률로 오라오라 러쉬 (0.45배 4~7연타)",
+    "무다러쉬": "30% 확률로 무다무다 러쉬 (0.45배 4~7연타)",
+    "스타핑거": "20% 확률로 스타 핑거 (1.5배 + 기절)",
+    "더월드": "6턴마다 시간을 멈춘다 — 3턴 동안 행동 불가 (면역 무시)",
+    "생명주입": "25% 확률로 생명 주입 — 1.8배 피해가 3턴에 나뉘어 들어오고, 그동안 최대체력 35% 이상 한 번에 맞으면 쇼크사",
+    "레퀴엠": "체력이 절반 아래로 떨어지면 골드 익스피리언스 레퀴엠 — 3턴 동안 모든 피해를 0으로 되돌린다",
+    "실구속": "20% 확률로 스톤 프리 실로 묶는다 (기절)",
+    "죠타로디스크": "체력이 절반 아래로 떨어지면 죠타로의 디스크로 스타 핑거·더 월드를 쓴다",
+    "화이트스네이크": "매 턴 단어를 하나씩 읊는다 — 14개를 다 읊으면 C-MOON, 5턴 뒤 메이드 인 헤븐 (3턴 안에 못 쓰러뜨리면 즉시 패배)",
 }
 상태설명 = {
     "약화": "공격력 -25%", "둔화": "회피 -20%p", "독": "매 턴 체력 3% × 중첩",
     "방어파괴": "방어력 절반", "기절": "한 턴 행동 불가", "출혈": "매 턴 체력 5%", "화상": "매 턴 체력 6%",
+    "혼란": "공격할 때 50% 확률로 헛손질", "생명주입": "크게 맞으면 쇼크사",
 }
 
 
@@ -438,6 +452,31 @@ def 일일구성(날=None):
     "라이딩 호그": dict(이모지="🐗", hp=200, hp당=8, 분담=0.10, price=1200, 공격=15,
                   설명="타고 싸운다: 주인 속도(회피) +50% · 공격력 +20% · 매 턴 10% 확률로 몸통 박치기 60(+2/능력Lv) + 1턴 기절"),
 }
+# 스탠드: 푸치에게서 얻은 ??? 스탠드 디스크로 만든다. 상점에 없고(숨김), 간식을 안 먹고 전투 경험치로 자란다.
+# 피해를 대신 받지 않고(분담 0) 쓰러지지도 않는다. 능력은 rpg_stands.abilities(JSON) — 관리자가 클로드 코드로 만든다 (스탠드요청.py)
+펫["스탠드"] = dict(이모지="👤", hp=500, hp당=10, 분담=0.0, price=0, 공격=40, 숨김=True,
+                  설명="??? 스탠드 디스크로 만든 나만의 스탠드. 간식을 먹지 않고 전투 경험치로 자란다")
+스탠드디스크 = "??? 스탠드 디스크"
+스탠드_최대레벨 = 100
+스탠드_능력간격 = 20             # Lv.20·40·60·80·100 마다 능력 1개 더 (처음 1개 → 최대 6개)
+스탠드_이름길이 = (1, 20)
+스탠드_요청최대 = 300             # 능력 설명 글자 수
+스탠드_능력종류 = ("피해", "상태", "회복", "방패", "회피", "해제", "강화", "보호", "반사")
+
+
+def 스탠드_필요경험치(lv):
+    return 30_000 * lv
+
+
+def 스탠드_레벨배율(lv):
+    """스탠드 능력 수치(피해·회복 등)에 곱한다. Lv.100 = 2배"""
+    return 1 + lv / 100
+
+
+def 스탠드능력칸(lv):
+    return 1 + lv // 스탠드_능력간격
+
+
 # 펫 능력 수치 (능력 레벨 lv 에 따라)
 강아지_확률 = lambda lv: 0.15 + 0.0015 * lv
 강아지_회복 = lambda lv: 0.12 + 0.001 * lv
@@ -473,6 +512,8 @@ def _펫능력문구(이름, 능력lv):
         return f"매 턴 {고양이_확률 * 100:.0f}% 확률로 할퀴기 {고양이_피해(능력lv)} 피해 + 출혈 {고양이_출혈(능력lv)}턴"
     if 이름 == "라이딩 호그":
         return f"속도 +{호그_속도 * 100:.0f}% · 공격력 +{호그_공격 * 100:.0f}% · 매 턴 {호그_확률 * 100:.0f}% 확률로 몸통 박치기 {호그_피해(능력lv)} + 기절"
+    if 이름 == "스탠드":
+        return f"능력 배율 ×{스탠드_레벨배율(능력lv):.2f} · 피해를 대신 받지 않고 쓰러지지 않는다"
     return f"피해 {펫['돼지']['분담'] * 100:.0f}% 대신 받기 · 매 턴 10% 확률로 자기 체력 {돼지_회복(능력lv)} 회복"
 
 
@@ -502,7 +543,15 @@ def 간식드롭(층):
     "3rR0r의 빛나는 스커프": dict(이모지="✨", 설명="던전마다 공격력 +80~120% · 받는 피해 -35% · 최대체력 +60 · 3회 온전 부활 · 층마다 5% 확률로 3rR0r404"),
     "정복자의 훈장":         dict(이모지="🎖️", 설명="공격력 +25% · 받는 피해 -15% · 최대체력 +100 (레이드 보스를 잡은 주에 피해 1등만 얻는다)"),
     "베이컨 오브 꾸이익":     dict(이모지="🥓", 설명="최대체력 +200 · 공격력 -50% · 회피 -15%p · 받는 피해 -20% · 매 턴 최대체력 3% 회복 · 1회 온전 부활 (꾸이익)"),
+    # 죠스타 보스 보상. 능력 없는 수집품 — 6개를 다 모으면 푸치_층에서 엔리코 푸치가 나온다
+    "죠나단의 황금빛 정신":   dict(이모지="🌹", 설명="죠나단 죠스타를 쓰러뜨린 증표 (능력 없음)"),
+    "죠셉의 황금빛 정신":     dict(이모지="🎩", 설명="죠셉 죠스타를 쓰러뜨린 증표 (능력 없음)"),
+    "죠타로의 황금빛 정신":   dict(이모지="⭐", 설명="쿠죠 죠타로를 쓰러뜨린 증표 (능력 없음)"),
+    "죠스케의 황금빛 정신":   dict(이모지="💗", 설명="히가시카타 죠스케를 쓰러뜨린 증표 (능력 없음)"),
+    "죠르노의 황금빛 정신":   dict(이모지="🐞", 설명="죠르노 죠바나를 쓰러뜨린 증표 (능력 없음)"),
+    "죠린의 황금빛 정신":     dict(이모지="🦋", 설명="쿠죠 죠린을 쓰러뜨린 증표 (능력 없음)"),
 }
+황금빛정신 = [n for n in 악세서리 if n.endswith("의 황금빛 정신")]
 
 
 악세_최대 = 3
@@ -568,16 +617,50 @@ def 악세효과(이름들):
     "높은곳":     ("😇 천사", 50, 7.2, 2.64, ["치유", "조준"], [("약화", 0.25)], "천사의 날개"),
     "나락":       ("😈 악마", 50, 6.48, 2.376, ["흡혈", "광폭"], [("화상", 0.3), ("출혈", 0.3)], "악마의 꼬리"),
     "엣지러너의 방": ("🌃 데이비드", 250, 9.0, 3.3, ["산데비스탄", "조준", "광폭"], [("출혈", 0.3), ("방어파괴", 0.3)], "산데비스탄"),
-    "모리오초":   ("💎 히가시카타 죠스케", 999, 7.2, 2.64, ["치유", "광폭", "조준"], [("방어파괴", 0.25)], "부서지지 않는 다이아몬드"),
+    "모리오초":   ("💎 히가시카타 죠스케", 999, 7.2, 2.64, ["치유", "광폭", "조준"], [("방어파괴", 0.25)], ("부서지지 않는 다이아몬드", "죠스케의 황금빛 정신")),
     "6.5층":      ("🌫️ 잊혀진 자", 50, 10.8, 3.96, ["광폭", "조준"], [("약화", 0.3), ("둔화", 0.3)], "강인한 심장"),
     "에러조우":   ("👾 3rR0r404", None, 6.0, 2.2, ["광폭", "흡혈"], [("약화", 0.3), ("독", 0.3)], None),
     "돼지우리":   ("🐷 돼지의 왕", 921, None, None, ["꿀꿀", "살찌기", "튕기기"], [], "베이컨 오브 꾸이익"),
+    "죠스타 저택": ("🌹 죠나단 죠스타", 1888, None, None, ["파문", "선라이트"], [], "죠나단의 황금빛 정신"),
+    "파문 수련장": ("🎩 죠셉 죠스타", 1938, None, None, ["파문", "다음에네놈은", "크레커볼레"], [], "죠셉의 황금빛 정신"),
+    "이집트":     ("⭐ 쿠죠 죠타로", 1988, None, None, ["오라러쉬", "스타핑거", "더월드"], [], "죠타로의 황금빛 정신"),
+    "베네치아":   ("🐞 죠르노 죠바나", 2001, None, None, ["무다러쉬", "생명주입", "레퀴엠"], [], "죠르노의 황금빛 정신"),
+    "그린 돌핀 스트리트 교도소": ("🦋 쿠죠 죠린", 2012, None, None, ["오라러쉬", "실구속", "죠타로디스크"], [], "죠린의 황금빛 정신"),
+    "케이프 커내버럴": ("✝️ 엔리코 푸치", 2012, None, None, ["화이트스네이크"], [], 스탠드디스크),
 }
-비밀공간_고정 = {"돼지우리": (500_000, 150)}      # 층 배율 대신 정해 둔 (체력, 공격력)
+# 보상(맨 끝 칸)은 이름 하나 또는 여러 개. 악세서리면 악세지급, 스탠드디스크면 카운트 "스탠드디스크"
+# 층 배율 대신 정해 둔 (체력, 공격력)
+비밀공간_고정 = {"돼지우리": (500_000, 150),
+              # 죠스타 보스 (2026-11-23, 자동 전투 시뮬로 맞춤 — 최고층 3000 유저 기준 승률 약 89·84·62·62·50·30%)
+              "죠스타 저택": (2_000_000, 4500), "파문 수련장": (2_300_000, 6500), "이집트": (2_700_000, 2800),
+              "베네치아": (2_800_000, 2600), "그린 돌핀 스트리트 교도소": (3_200_000, 3300), "케이프 커내버럴": (3_300_000, 5500)}
 돼지우리_층 = 921                                  # 이 층에서 채팅으로 '꾸이익'을 외치면 들어간다
-비밀공간_제목 = {"모리오초": "💎 모리오초", "엣지러너의 방": "🌃 엣지러너의 방", "6.5층": "🌫️ 6.5층", "-1층": "🕳️ -1층", "돼지우리": "🐖 돼지우리", "개발자의 방": "💻 개발자의 방", "높은곳": "☁️ 높은곳",
+비밀공간_제목 = {"죠스타 저택": "🏰 죠스타 저택", "파문 수련장": "🌊 파문 수련장", "이집트": "🏜️ 이집트", "베네치아": "🛶 베네치아",
+                "그린 돌핀 스트리트 교도소": "🐬 그린 돌핀 스트리트 교도소", "케이프 커내버럴": "🚀 케이프 커내버럴 센터",
+                "모리오초": "💎 모리오초", "엣지러너의 방": "🌃 엣지러너의 방", "6.5층": "🌫️ 6.5층", "-1층": "🕳️ -1층", "돼지우리": "🐖 돼지우리", "개발자의 방": "💻 개발자의 방", "높은곳": "☁️ 높은곳",
                 "나락": "🔥 나락", "에러조우": "👾 ▒▒층", "재단": "🗿 알 수 없는 재단", "레이드": "⚔️ 레이드",
                 "일일": "📅 일일 던전", "로그라이크": "🎲 로그라이크 던전", "보스러시": "👑 보스 러시"}
+# 채팅으로 외치면 들어가는 비밀공간: 방 → (층, 대사). 띄어쓰기·문장부호는 안 본다 (_외침정리)
+외침_비밀 = {
+    "돼지우리": (돼지우리_층, "꾸이익"),
+    "모리오초": (999, "그레이트하군, 이 능력."),
+    "죠스타 저택": (1888, "선라이트 옐로 오버드라이브!"),
+    "파문 수련장": (1938, "크레커 볼레!"),
+    "이집트": (1988, "네놈은 날 화나게 했다."),
+    "베네치아": (2001, "나 죠르노 죠바나에겐 꿈이 있다!"),
+    "그린 돌핀 스트리트 교도소": (2012, "난 이 돌의 바다에서 자유로워지겠어!"),
+}
+푸치_층 = 2012                    # 황금빛 정신 6개를 다 가진 사람이 이 층에 오면 엔리코 푸치가 나온다
+푸치_단어 = ["나선 계단", "장수풍뎅이", "폐허의 거리", "무화과 타르트", "장수풍뎅이", "비아 돌로로사", "장수풍뎅이",
+           "특이점", "조토", "엔젤", "수국", "장수풍뎅이", "특이점", "비밀의 황제"]
+생명주입_쇼크 = 0.35              # 생명 주입 중 한 번에 최대체력의 이만큼 맞으면 쇼크사
+죠셉_대사 = ["이 미친 노인네가!", "그런 얕은 수가 통할 것 같으냐!", "어째서 내 생각을 읽은 거지!?", "젠장! 이 녀석!"]
+
+
+def _외침정리(글):
+    return re.sub(r"[^0-9A-Za-z가-힣ㄱ-ㅎ]", "", 글 or "").lower()
+
+
 하트비트 = ["💓 쿵… 쿵…", "💓 쿵쿵쿵쿵", "💓 …", "💓 쿵 · · · · 쿵", "💓 ᚲᚢᛜ", "💓 쿵쿵…쿵…쿵쿵쿵"]
 
 
@@ -667,6 +750,12 @@ try:
 except sqlite3.OperationalError:
     pass
 cursor.execute("CREATE TABLE IF NOT EXISTS rpg_achievements (user_id TEXT, name TEXT, at TEXT, PRIMARY KEY (user_id, name))")
+# 스탠드: 1인 1개. abilities = 능력 JSON 목록 (스탠드능력검사 형식)
+cursor.execute("CREATE TABLE IF NOT EXISTS rpg_stands (user_id TEXT PRIMARY KEY, name TEXT, level INTEGER DEFAULT 1, "
+               "exp INTEGER DEFAULT 0, abilities TEXT DEFAULT '[]', created_at TEXT)")
+# 스탠드 요청: kind = 생성/능력, status = 대기/완료/거절. 관리자가 클로드 코드로 처리한다 (스탠드요청.py)
+cursor.execute("CREATE TABLE IF NOT EXISTS rpg_stand_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, kind TEXT, "
+               "stand_name TEXT, request TEXT, status TEXT DEFAULT '대기', note TEXT, created_at TEXT, done_at TEXT)")
 # 레이드: 주(월요일 날짜)마다 보스 하나. hp·max_hp·damage 는 점수 단위 (REAL)
 cursor.execute(
     "CREATE TABLE IF NOT EXISTS rpg_raids (week TEXT PRIMARY KEY, boss INTEGER, max_hp REAL, hp REAL, "
@@ -1604,25 +1693,188 @@ def 간식(user_id):
 
 
 def 내펫들(user_id):
-    """[{이름, 체력lv, 능력lv, 장착}]"""
+    """[{이름, 체력lv, 능력lv, 장착}]. 스탠드는 별명 = 스탠드 이름, 두 레벨 = 스탠드 레벨"""
     if 관리자인가(user_id):
-        for n in 펫:
-            cursor.execute("INSERT OR IGNORE INTO rpg_pets (user_id, pet) VALUES (?, ?)", (user_id, n))
+        for n, d in 펫.items():
+            if not d.get("숨김"):
+                cursor.execute("INSERT OR IGNORE INTO rpg_pets (user_id, pet) VALUES (?, ?)", (user_id, n))
         conn.commit()
     cursor.execute("SELECT pet FROM rpg_characters WHERE user_id = ?", (user_id,))
     r = cursor.fetchone()
     장착 = r[0] if r else None
     cursor.execute("SELECT pet, hp_lv, skill_lv, nickname FROM rpg_pets WHERE user_id = ?", (user_id,))
-    return [{"이름": n, "체력lv": h, "능력lv": k, "장착": n == 장착, "별명": 별명 or n}
-            for n, h, k, 별명 in cursor.fetchall() if n in 펫]
+    결과 = []
+    for n, h, k, 별명 in cursor.fetchall():
+        if n not in 펫:
+            continue
+        if n == "스탠드":
+            st = 내스탠드(user_id)
+            if st is None:
+                continue
+            h = k = st["레벨"]
+            별명 = st["이름"]
+        결과.append({"이름": n, "체력lv": h, "능력lv": k, "장착": n == 장착, "별명": 별명 or n})
+    return 결과
 
 
-def _펫찾기(이름):
+def _펫찾기(이름, user_id=None):
     q = _정리(이름)
+    if user_id and q:
+        st = 내스탠드(user_id)
+        if st and (q == _정리(st["이름"]) or q in _정리(st["이름"])):
+            return "스탠드"
     for n in 펫:
         if _정리(n) == q or (q and q in _정리(n)):
             return n
     return None
+
+
+# ============================================================
+# 스탠드 (??? 스탠드 디스크 → 요청 → 관리자가 클로드 코드로 능력을 만들어 완성)
+#   능력 형식: {"이름", "설명", "확률"(매 턴, 0~1), "쿨"(발동 뒤 쉬는 턴, 선택), "조건"(선택: {"체력이하": 0.3}),
+#              "효과": [{"종류": ...}, ...]}
+#   효과 종류 (수치는 스탠드_레벨배율을 곱한다 — 턴·횟수·확률은 안 곱함):
+#     피해 {배율, 대상: 하나/전체, 치명: bool}  — 주인 무기피해 × 배율
+#     상태 {이름: 구속/출혈/화상/혼란, 턴, 대상}   — 적에게
+#     회복 {비율}                                — 주인 최대체력 × 비율
+#     방패 {횟수}  회피 {턴}(연막 +40%)  해제 {}(내 상태이상 전부)
+#     강화 {배율, 턴}(주인 무기피해 ×)  보호 {비율, 턴}(받는 피해 -비율, 최대 0.9)  반사 {턴}(가시철조망)
+# ============================================================
+
+def 내스탠드(user_id):
+    cursor.execute("SELECT name, level, exp, abilities, created_at FROM rpg_stands WHERE user_id = ?", (user_id,))
+    r = cursor.fetchone()
+    if r is None:
+        return None
+    try:
+        능력 = json.loads(r[3] or "[]")
+    except ValueError:
+        능력 = []
+    return {"이름": r[0], "레벨": r[1], "경험": r[2], "능력들": 능력, "만든때": r[4],
+            "다음": 스탠드_필요경험치(r[1]) if r[1] < 스탠드_최대레벨 else None}
+
+
+def 스탠드디스크수(user_id):
+    return 카운트(user_id, "스탠드디스크")
+
+
+def 스탠드요청목록(user_id=None, 상태="대기"):
+    조건, 값 = [], []
+    if user_id:
+        조건.append("user_id = ?"); 값.append(user_id)
+    if 상태:
+        조건.append("status = ?"); 값.append(상태)
+    cursor.execute("SELECT id, user_id, kind, stand_name, request, status, note, created_at, done_at FROM rpg_stand_requests"
+                   + (" WHERE " + " AND ".join(조건) if 조건 else "") + " ORDER BY id", 값)
+    return [dict(zip(("id", "user_id", "종류", "이름", "내용", "상태", "메모", "요청때", "처리때"), r)) for r in cursor.fetchall()]
+
+
+def 스탠드능력검사(a):
+    """능력 dict 형식 확인. 문제 있으면 이유 문자열, 괜찮으면 None"""
+    if not isinstance(a, dict) or not a.get("이름") or not isinstance(a.get("효과"), list) or not a["효과"]:
+        return "이름과 효과 목록이 필요해요"
+    if not 0 < float(a.get("확률", 1)) <= 1:
+        return "확률은 0~1"
+    for 효 in a["효과"]:
+        if 효.get("종류") not in 스탠드_능력종류:
+            return f"모르는 효과 종류: {효.get('종류')}"
+        if 효["종류"] == "상태" and 효.get("이름") not in ("구속", "출혈", "화상", "혼란"):
+            return f"적에게 거는 상태는 구속/출혈/화상/혼란만: {효.get('이름')}"
+    return None
+
+
+def 스탠드요청(user_id, 종류, 내용, 이름=None):
+    """종류: 생성(디스크 1장 사용) / 능력(레벨 20마다 1칸). 반환 (성공, 문구)"""
+    if 캐릭터(user_id) is None:
+        return False, "캐릭터가 없습니다."
+    내용 = (내용 or "").strip()
+    if not 내용:
+        return False, "스탠드 능력을 설명해 주세요."
+    if len(내용) > 스탠드_요청최대:
+        return False, f"능력 설명은 {스탠드_요청최대}자까지예요."
+    대기 = 스탠드요청목록(user_id)
+    st = 내스탠드(user_id)
+    if 종류 == "생성":
+        이름 = (이름 or "").strip()
+        최소, 최대 = 스탠드_이름길이
+        if not (최소 <= len(이름) <= 최대):
+            return False, f"스탠드 이름은 {최소}~{최대}자예요."
+        if any(ch in 이름 for ch in "@#`\n\r*_~|<>"):
+            return False, "스탠드 이름에 특수문자(@ # ` * _ ~ | < >)는 쓸 수 없어요."
+        if st:
+            return False, f"이미 스탠드 **{st['이름']}**이(가) 있어요."
+        if any(r["종류"] == "생성" for r in 대기):
+            return False, "이미 만들고 있는 스탠드가 있어요. 완성될 때까지 기다려 주세요."
+        cursor.execute("UPDATE rpg_counters SET value = value - 1 WHERE user_id = ? AND key = '스탠드디스크' AND value >= 1",
+                       (user_id,))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return False, f"{스탠드디스크}가 없어요. 엔리코 푸치를 쓰러뜨리면 얻을 수 있어요."
+    elif 종류 == "능력":
+        if st is None:
+            return False, "스탠드가 아직 없어요."
+        남은칸 = 스탠드능력칸(st["레벨"]) - len(st["능력들"]) - sum(1 for r in 대기 if r["종류"] == "능력")
+        if 남은칸 <= 0:
+            다음 = (st["레벨"] // 스탠드_능력간격 + 1) * 스탠드_능력간격
+            return False, (f"지금은 새 능력을 만들 수 없어요. (Lv.{다음}에 한 칸 더)" if 다음 <= 스탠드_최대레벨
+                           else "능력 칸이 가득 찼어요.")
+        이름 = st["이름"]
+    else:
+        return False, "생성 또는 능력"
+    cursor.execute("INSERT INTO rpg_stand_requests (user_id, kind, stand_name, request, created_at) VALUES (?, ?, ?, ?, ?)",
+                   (user_id, 종류, 이름, 내용, _지금()))
+    번호 = cursor.lastrowid
+    conn.commit()
+    print(f"[{datetime.now()}] RPG 스탠드 요청 #{번호} {user_id} {종류} {이름}: {내용}")
+    return True, 번호
+
+
+def 스탠드처리(요청id, 능력=None, 거절=None):
+    """관리자(클로드 코드)가 요청을 처리한다. 능력 dict 를 주면 완성, 거절 문구를 주면 거절(생성이면 디스크 돌려줌).
+    반환 (성공, 문구, 요청 dict)"""
+    r = next((x for x in 스탠드요청목록(None, None) if x["id"] == 요청id), None)
+    if r is None or r["상태"] != "대기":
+        return False, "대기 중인 요청이 아니에요.", r
+    uid = r["user_id"]
+    if 거절 is not None:
+        cursor.execute("UPDATE rpg_stand_requests SET status = '거절', note = ?, done_at = ? WHERE id = ?", (거절, _지금(), 요청id))
+        if r["종류"] == "생성":
+            카운트(uid, "스탠드디스크", 1)
+        conn.commit()
+        return True, "거절했어요" + (" (디스크 돌려줌)" if r["종류"] == "생성" else ""), r
+    오류 = 스탠드능력검사(능력)
+    if 오류:
+        return False, 오류, r
+    if r["종류"] == "생성":
+        cursor.execute("INSERT INTO rpg_stands (user_id, name, abilities, created_at) VALUES (?, ?, ?, ?)",
+                       (uid, r["이름"], json.dumps([능력], ensure_ascii=False), _지금()))
+        cursor.execute("INSERT OR IGNORE INTO rpg_pets (user_id, pet) VALUES (?, '스탠드')", (uid,))
+        cursor.execute("UPDATE rpg_characters SET pet = '스탠드' WHERE user_id = ? AND pet IS NULL", (uid,))
+    else:
+        st = 내스탠드(uid)
+        cursor.execute("UPDATE rpg_stands SET abilities = ? WHERE user_id = ?",
+                       (json.dumps(st["능력들"] + [능력], ensure_ascii=False), uid))
+    cursor.execute("UPDATE rpg_stand_requests SET status = '완료', note = ?, done_at = ? WHERE id = ?",
+                   (능력["이름"], _지금(), 요청id))
+    conn.commit()
+    return True, "완성", r
+
+
+def 스탠드경험치(user_id, 양):
+    """전투 경험치를 스탠드에도 넣는다. 반환 (새 레벨, 오른 레벨 수, 새 능력 칸이 생겼는지)"""
+    st = 내스탠드(user_id)
+    if st is None or 양 <= 0:
+        return None, 0, False
+    레벨, 경험 = st["레벨"], st["경험"] + int(양)
+    오름 = 0
+    while 레벨 < 스탠드_최대레벨 and 경험 >= 스탠드_필요경험치(레벨):
+        경험 -= 스탠드_필요경험치(레벨)
+        레벨 += 1
+        오름 += 1
+    if 레벨 >= 스탠드_최대레벨:
+        경험 = 0
+    cursor.execute("UPDATE rpg_stands SET level = ?, exp = ? WHERE user_id = ?", (레벨, 경험, user_id))
+    return 레벨, 오름, 스탠드능력칸(레벨) > 스탠드능력칸(st["레벨"])
 
 
 def 펫구매(user_id, 이름):
@@ -1630,8 +1882,8 @@ def 펫구매(user_id, 이름):
     if c is None:
         return False, "캐릭터가 없습니다."
     n = _펫찾기(이름)
-    if n is None:
-        return False, f"'{이름}' 은(는) 없는 펫입니다. ({' / '.join(펫)})"
+    if n is None or 펫[n].get("숨김"):
+        return False, f"'{이름}' 은(는) 없는 펫입니다. ({' / '.join(k for k, d in 펫.items() if not d.get('숨김'))})"
     if any(p["이름"] == n for p in 내펫들(user_id)):
         return False, f"{n}은(는) 이미 키우고 있습니다."
     가격 = 펫[n]["price"]
@@ -1653,7 +1905,7 @@ def 펫장착(user_id, 이름):
         cursor.execute("UPDATE rpg_characters SET pet = NULL WHERE user_id = ?", (user_id,))
         conn.commit()
         return True, None
-    n = _펫찾기(이름)
+    n = _펫찾기(이름, user_id)
     if n is None or not any(p["이름"] == n for p in 내펫들(user_id)):
         return False, f"'{이름}' 펫을 가지고 있지 않습니다."
     cursor.execute("UPDATE rpg_characters SET pet = ? WHERE user_id = ?", (n, user_id))
@@ -1689,7 +1941,9 @@ def 펫무기설정(user_id, 이름):
 
 def 펫이름설정(user_id, 종류, 새이름):
     """펫 별명 짓기. 새이름이 '초기화'면 원래 이름으로"""
-    n = _펫찾기(종류)
+    n = _펫찾기(종류, user_id)
+    if n == "스탠드":
+        return False, "스탠드 이름은 바꿀 수 없어요."
     if n is None or not any(p["이름"] == n for p in 내펫들(user_id)):
         return False, f"'{종류}' 펫을 가지고 있지 않습니다."
     새이름 = (새이름 or "").strip()
@@ -1710,7 +1964,9 @@ def 펫강화(user_id, 이름, 종류):
     """종류: 체력 / 능력"""
     if 전투중(user_id):
         return False, "전투 중에는 펫을 키울 수 없습니다."
-    n = _펫찾기(이름)
+    n = _펫찾기(이름, user_id)
+    if n == "스탠드":
+        return False, "스탠드는 간식을 먹지 않아요. 데리고 싸우면 전투 경험치로 자라요."
     펫정보 = next((p for p in 내펫들(user_id) if p["이름"] == n), None)
     if 펫정보 is None:
         return False, f"'{이름}' 펫을 가지고 있지 않습니다."
@@ -1974,6 +2230,9 @@ class 전투:
             if p["장착"]:
                 최대 = 펫최대체력(p["이름"], p["체력lv"])
                 self.펫 = {"이름": p["이름"], "별명": p["별명"], "hp": 최대, "최대": 최대, "능력lv": p["능력lv"], "무기": None}
+                if p["이름"] == "스탠드":
+                    self.펫["능력들"] = (내스탠드(user_id) or {}).get("능력들", [])
+                    self.펫["스탠드쿨"] = {}
                 pw = 펫무기(user_id)
                 if pw and 보유(user_id, "weapon", pw) and pw != c["weapon"] and pw in 무기:
                     self.펫["무기"] = pw
@@ -2033,6 +2292,12 @@ class 전투:
             "6.5층": "7층으로 가는 계단이 끊겨 있다… 층과 층 사이, 모두에게 잊혀진 공간이다.",
             "에러조우": "▒▒▒ 공간이 일그러진다. 3rR0r404가 나타났다. 도망칠 수 없다.",
             "돼지우리": "꾸이익!!! 외침이 921층에 메아리친다… 바닥이 흔들리더니 왕관을 쓴 거대한 돼지가 솟아오른다.",
+            "죠스타 저택": "1888년, 영국. 불타는 저택 한가운데 푸른 눈의 신사가 서 있다. 호흡이 햇빛처럼 빛난다.",
+            "파문 수련장": "에어 서플레나 섬. 입에 링을 문 청년이 클래커를 빙글빙글 돌리며 씩 웃는다.",
+            "이집트": "카이로의 밤. 학생모를 쓴 남자 뒤로 보랏빛 거인이 주먹을 쥔다. \"야레야레다제.\"",
+            "베네치아": "산타 루치아 역. 금발의 소년이 무당벌레 브로치를 매만진다. \"무다\"",
+            "그린 돌핀 스트리트 교도소": "철창 너머, 실로 엮인 팔을 가진 여자가 이쪽을 노려본다.",
+            "케이프 커내버럴": "6개의 황금빛 정신이 공명한다… 케이프 커내버럴. 신부복을 입은 남자가 하늘을 올려다본다. \"천국에 가는 방법…\"",
         }[종류]
         self.기록(f"{비밀공간_제목[종류]} — {문구}")
         self.기록(f"{이름}이(가) 나타났다!")
@@ -2287,15 +2552,23 @@ class 전투:
         self._정산()
 
     def 외침(self, 말):
-        """채팅으로 외친 말. 돼지우리_층에서 '꾸이익'이면 돼지우리로. 들어갔으면 True"""
-        if "꾸이익" not in (말 or "") or self.층 != 돼지우리_층 or self.비밀 or self.상태 not in ("전투", "클리어"):
-            return False
+        """채팅으로 외친 말이 지금 층의 대사(외침_비밀)면 그 비밀공간으로. 들어간 방 이름, 아니면 None"""
+        if self.비밀 or self.상태 not in ("전투", "클리어"):
+            return None
+        글 = _외침정리(말)
+        방 = next((방 for 방, (층, 대사) in 외침_비밀.items() if 층 == self.층 and _외침정리(대사) in 글), None)
+        if 방 is None:
+            return None
         self.새로그 = []
         self.마지막 = datetime.now()
-        self.기록(f"📣 \"{말.strip()[:30]}\"")
-        self._비밀입장("돼지우리")
+        self.기록(f"📣 \"{말.strip()[:40]}\"")
+        self._비밀입장(방)
         conn.commit()
-        return True
+        return 방
+
+    def _정신다모음(self):
+        가진 = {a["이름"] for a in 내악세서리(self.uid)}
+        return set(황금빛정신) <= 가진
 
     def 창밖(self):
         """50층을 깬 뒤에만 고를 수 있다"""
@@ -2334,6 +2607,10 @@ class 전투:
         elif self._규칙("회피없음"):
             s["회피"] = 0
         s["회피"] += getattr(self, "악세효과", {}).get("회피", 0)      # 베이컨 -15%p (옛 전투엔 키가 없다)
+        if getattr(self, "효과", {}).get("스탠드강화"):
+            배 = getattr(self, "스탠드강화배율", 1.0)
+            s["무기피해"] *= 배
+            s["공격력"] = round(s["공격력"] * 배)
         return s
 
     def 살아있는적(self):
@@ -2412,6 +2689,9 @@ class 전투:
         """적에게 피해를 주고 실제 피해를 돌려준다. 죽으면 처치를 기록한다."""
         if e["hp"] <= 0:
             return 0
+        if e.get("무적", 0) > 0:
+            self.기록(f"🐞 {e['이름']}에게 닿은 공격이 '0'으로 되돌아갔다")
+            return 0
         if 출처 is not None and e.get("산데", {}).get("남은", 0) > 0:
             self.기록(f"⏱️ {e['이름']}이(가) 느려진 시간 속에서 가볍게 피했다")
             return 0
@@ -2489,6 +2769,9 @@ class 전투:
             if self.상태 == "전투":
                 self.새업적 += 업적확인(self.uid)
             return True
+        if 종류 == "공격" and self.효과.get("혼란") and random.random() < 0.5:
+            종류 = "헛손질"                  # 혼란: 아래 어느 행동에도 안 걸리고 적 턴으로 넘어간다
+            self.기록("🌀 혼란에 빠져 엉뚱한 곳을 휘둘렀다!")
         if 종류 != "관찰":
             self.관찰연속 = 0
         if 종류 != "공격":
@@ -2847,13 +3130,171 @@ class 전투:
                 self.기록(f"   💔 {p['별명']}이(가) 쓰러졌다… 이번 전투에서는 더 이상 돕지 못한다")
         return 피해 - 몫
 
-    def _내가받는피해(self, e, 배율=1.0):
+    def _내가받는피해(self, e, 배율=1.0, 방어무시=False):
         s = self.능력()
         저항 = 갑옷.get(self._c()["armor"], 갑옷["가죽옷"])["저항"]
-        방어 = s["방어력"] * (0.5 if self.효과.get("방어파괴") else 1)
+        방어 = 0 if 방어무시 else s["방어력"] * (0.5 if self.효과.get("방어파괴") else 1)
         피해 = e["atk"] * 배율 * 100 / (100 + 방어) * (1 - 저항.get(e["종류"], 0)) * self.악세효과["피해배율"]
         피해 *= self._규칙("받는피해", 1.0)
+        if self.효과.get("스탠드보호"):
+            피해 *= 1 - getattr(self, "스탠드보호비율", 0)
         return max(1, round(피해 * random.uniform(0.85, 1.15)))
+
+    def _회피확률(self, s):
+        회피 = (s["회피"] + (0.4 if self.효과.get("연막") else 0) - (0.2 if self.효과.get("둔화") else 0)
+                - (덫_회피감소 if self.효과.get("지뢰") or self.효과.get("가시철조망") else 0)
+                - self._환경().get("회피", 0))
+        if self.산데["남은"] > 0:
+            회피 = 1.0                       # 산데비스탄: 느려진 시간 속에서는 전부 피한다
+        return 회피
+
+    def _피해받기(self, 피해):
+        """적 공격 피해를 체력에서 뺀다 (펫 분담 뒤). 생명 주입 중 크게 맞으면 쇼크사. 실제로 받은 피해"""
+        실제 = self._펫분담(피해)
+        self.체력 -= 실제
+        if self.효과.get("생명주입") and self.체력 > 0 and 실제 >= self.최대체력 * 생명주입_쇼크:
+            self.체력 = 0
+            self.기록("🐞 감각이 폭주한 몸이 고통을 견디지 못했다… 쇼크사!")
+        return 실제
+
+    # ---------- 죠스타 보스 ----------
+    def _보스타격(self, e, 배율, 기술, 횟수=1, 방어무시=False, 피할수있음=True):
+        """보스 기술. 방패·회피·펫분담·생명주입 쇼크를 거친다. 준 피해 합계"""
+        s = self.능력()
+        합, 맞음, 막음, 피함 = 0, 0, 0, 0
+        for _ in range(횟수):
+            if self.체력 <= 0:
+                break
+            if self.효과.get("방패"):
+                self.효과["방패"] -= 1
+                카운트(self.uid, "길막_설치형 방패", 1)
+                막음 += 1
+                continue
+            회피 = self._회피확률(s)
+            if 피할수있음 and 회피 > 0 and random.random() < 회피:
+                피함 += 1
+                continue
+            피해 = self._내가받는피해(e, 배율, 방어무시=방어무시)
+            합 += 피해
+            맞음 += 1
+            self._피해받기(피해)
+        덧 = [f"{횟수}연타 중 {맞음}대"] if 횟수 > 1 else []
+        덧 += [f"방패 {막음}"] if 막음 else []
+        덧 += [f"회피 {피함}"] if 피함 else []
+        self.기록(f"{기술}! " + (f"{합:,} 피해" if 맞음 else "막아냈다") + (f" ({', '.join(덧)})" if 덧 else "")
+                 + (" — 방어 무시" if 방어무시 and 맞음 else ""))
+        return 합
+
+    def _기절시키기(self, 턴, 이유, 면역무시=False):
+        """나를 턴만큼 못 움직이게 한다. 효과는 그 턴 끝에 한 번 줄어드니 +1 해서 넣는다"""
+        if self.악세효과["면역"] and not 면역무시:
+            self.기록(f"   ↳ 💡 {이유}… 하지만 몸은 멀쩡히 움직인다")
+            return
+        self.효과["기절"] = max(self.효과.get("기절", 0), 턴 + 1)
+        self.기록(f"   ↳ ⏸️ {이유} — {턴}턴 동안 움직일 수 없다")
+
+    def _보스패턴(self, e):
+        """죠스타 보스 기술. 이번 턴 행동을 썼으면 True (일반 공격을 안 한다)"""
+        p, t = e["패턴"], e["턴"]
+        if "화이트스네이크" in p:
+            return self._푸치(e)
+        if "레퀴엠" in p and not e.get("레퀴엠") and e["hp"] <= e["최대"] * 0.5:
+            e["레퀴엠"] = True
+            e["무적"] = 4                    # 그 턴 끝에 한 번 줄어서 3턴
+            self.기록("🐞 **골드 익스피리언스 레퀴엠!** \"너는 결코 진실에 도달할 수 없다\" — 3턴 동안 모든 공격이 '0'으로 되돌아간다")
+            return True
+        if "죠타로디스크" in p and not e.get("디스크") and e["hp"] <= e["최대"] * 0.5:
+            e["디스크"] = True
+            e["패턴"] += ["스타핑거", "더월드"]
+            e["월드"] = 0
+            self.기록("💿 **죠타로의 디스크!** 죠린이 아버지의 기억 디스크를 꽂았다 — 스타 플래티나의 힘이 깃든다")
+            return True
+        if "선라이트" in p and t % 5 in (4, 0):
+            if t % 5 == 4:
+                self.기록(f"{e['이름']}이(가) 호흡을 가다듬는다… 손끝에 햇빛 같은 파문이 모인다 (다음 턴 궁극기!)")
+                return True
+            self._보스타격(e, 3.0, "🌞 **선라이트 옐로 오버드라이브**", 방어무시=True)
+            if self.체력 > 0:
+                self._상태부여("화상", 4)
+            return True
+        if "크레커볼레" in p and t % 5 in (4, 0):
+            if t % 5 == 4:
+                self.기록(f"{e['이름']}이(가) 클래커를 빙빙 돌린다… 파문이 실린다 (다음 턴 궁극기!)")
+                return True
+            self._보스타격(e, 1.6, "🎩 **크레커 볼레**", 횟수=2)
+            if self.체력 > 0:
+                self._기절시키기(1, "클래커에 머리를 맞았다")
+            return True
+        if "더월드" in p:
+            e["월드"] = e.get("월드", 0) + 1
+            if e["월드"] >= 6:
+                e["월드"] = 0
+                self.기록("⭐ **스타 플래티나 더 월드!** 시간이 멈췄다…")
+                self._기절시키기(3, "멈춘 시간 속", 면역무시=True)
+                return True
+            if e["월드"] == 5:
+                self.기록("⭐ 스타 플래티나가 주먹을 꽉 쥔다… (다음 턴 더 월드!)")
+        if "스타핑거" in p and random.random() < 0.2:
+            self._보스타격(e, 1.5, "⭐ 스타 핑거")
+            if self.체력 > 0:
+                self._기절시키기(1, "손가락에 꿰뚫렸다")
+            return True
+        for 패턴, 소리 in (("오라러쉬", "👊 오라오라오라오라"), ("무다러쉬", "👊 무다무다무다무다")):
+            if 패턴 in p and random.random() < 0.3:
+                self._보스타격(e, 0.45, 소리, 횟수=random.randint(4, 7))
+                return True
+        if "실구속" in p and random.random() < 0.2:
+            self._보스타격(e, 1.0, "🧵 스톤 프리")
+            if self.체력 > 0:
+                self._기절시키기(1, "실에 꽁꽁 묶였다")
+            return True
+        if "생명주입" in p and not self.효과.get("생명주입") and random.random() < 0.25:
+            피해 = self._내가받는피해(e, 1.8)
+            self.고통 = [피해 // 3 + (1 if i < 피해 % 3 else 0) for i in range(3)]
+            self.효과["생명주입"] = 4
+            self.기록(f"🐞 **생명 주입!** 감각이 폭주한다 — {피해:,} 피해가 3턴에 나뉘어 들어온다 "
+                     f"(그동안 한 번에 최대체력 {생명주입_쇼크 * 100:.0f}% 넘게 맞으면 쇼크사)")
+            return True
+        if "다음에네놈은" in p and random.random() < 0.25:
+            self.기록(f"🎩 \"다음에 네놈은 '{random.choice(죠셉_대사)}'라고 말한다!\"")
+            self._상태부여("혼란", 3)
+            return True
+        if "파문" in p and random.random() < 0.25:
+            self._보스타격(e, 1.3, "🌊 파문 공격", 방어무시=True)
+            return True
+        return False
+
+    def _푸치(self, e):
+        단계 = e.setdefault("단계", "화이트 스네이크")
+        if 단계 == "화이트 스네이크":
+            i = e.get("단어", 0)
+            self.기록(f"✝️ 푸치: \"{푸치_단어[i]}\" ({i + 1}/{len(푸치_단어)})")
+            e["단어"] = i + 1
+            if e["단어"] >= len(푸치_단어):
+                e["단계"], e["단계턴"] = "C-MOON", 0
+                self.기록("🌑 14개의 단어가 모였다… 화이트 스네이크가 **C-MOON**으로 진화했다! 중력이 뒤집힌다")
+                return True
+            if random.random() < 0.25:
+                self._보스타격(e, 1.0, "💿 화이트 스네이크")
+                if self.체력 > 0:
+                    self._기절시키기(1, "능력이 디스크로 뽑혔다")
+                return True
+            return False
+        if 단계 == "C-MOON":
+            e["단계턴"] += 1
+            if e["단계턴"] > 5:
+                e["단계"], e["가속"] = "메이드 인 헤븐", -1        # 가속은 _턴끝에서 매 턴(구속돼도) 센다
+                self.기록("⏩ C-MOON이 **메이드 인 헤븐**으로 진화했다! 시간이 가속되기 시작한다… 3턴 안에 쓰러뜨리지 못하면 끝이다")
+                return True
+            if random.random() < 0.3:
+                self._보스타격(e, 2.0, "🌑 **중력 반전**", 방어무시=True)
+                if self.체력 > 0:
+                    self._상태부여("혼란", 3)
+            else:
+                self._보스타격(e, 1.0, "🌑 뒤집힌 중력", 방어무시=True)
+            return True
+        self._보스타격(e, 1.0, "⏩ 가속된 시간 속 연타", 횟수=2)
+        return True
 
     def _적턴(self):
         s = self.능력()
@@ -2893,6 +3334,9 @@ class 전투:
                 e["hp"] = e["최대"]
                 self.기록(f"🐷 {e['이름']}이(가) 살이 쪘다! 체력 +{회복:,} (가득 찼다)")
 
+            if e["보스"] and self._보스패턴(e):
+                continue
+
             if "자폭" in e["패턴"] and e["턴"] >= 3:
                 e["hp"] = 0
                 if self.효과.get("방패"):
@@ -2902,7 +3346,7 @@ class 전투:
                 else:
                     피해 = self._내가받는피해(e, 3.0)
                     self.기록(f"💥 {e['이름']}이(가) 자폭했다! {피해} 피해")
-                    self.체력 -= self._펫분담(피해)
+                    self._피해받기(피해)
                 self._처치(e, None)
                 continue
 
@@ -2936,18 +3380,14 @@ class 전투:
                 카운트(self.uid, "길막_설치형 방패", 1)
                 self.기록(f"🛡️ 방패가 {e['이름']}의 공격을 막았다")
                 continue
-            회피 = (s["회피"] + (0.4 if self.효과.get("연막") else 0) - (0.2 if self.효과.get("둔화") else 0)
-                    - (덫_회피감소 if self.효과.get("지뢰") or self.효과.get("가시철조망") else 0)
-                    - self._환경().get("회피", 0))
-            if self.산데["남은"] > 0:
-                회피 = 1.0                       # 산데비스탄: 느려진 시간 속에서는 전부 피한다
+            회피 = self._회피확률(s)
             if 회피 > 0 and random.random() < 회피:
                 self.기록(f"💨 {e['이름']}의 공격을 피했다")
                 continue
 
             피해 = self._내가받는피해(e, 배율 * (1.2 if e.get("산데", {}).get("남은", 0) > 0 else 1))
             self.기록(f"🩸 {e['이름']}에게 {피해} 피해 ({e['종류']})" + (" 🎯저격!" if 배율 > 1 else ""))
-            self.체력 -= self._펫분담(피해)
+            self._피해받기(피해)
             if self.체력 > 0:
                 self.버틴연속 += 1
                 카운트최대(self.uid, "버티기연속_최대", self.버틴연속)
@@ -3046,11 +3486,81 @@ class 전투:
                     e["효과"]["구속"] = max(e["효과"].get("구속", 0), 1)
                 self.기록(f"{이모지} {p['별명']}이(가) {e['이름']}에게 몸통 박치기! {준} 피해" + (" + 기절" if e["hp"] > 0 else ""))
                 self._보류출력()
+        elif p["이름"] == "스탠드":
+            self._스탠드능력()
         elif p["이름"] == "돼지":
             if p["hp"] < p["최대"] and random.random() < 0.10:
                 전 = p["hp"]
                 p["hp"] = min(p["최대"], p["hp"] + 돼지_회복(lv))
                 self.기록(f"{이모지} {p['별명']}이(가) 밥을 먹었다. 체력 +{p['hp'] - 전}")
+
+    def _스탠드능력(self):
+        p = self.펫
+        배 = 스탠드_레벨배율(p["능력lv"])
+        쿨 = p.setdefault("스탠드쿨", {})
+        for i, a in enumerate(p.get("능력들") or []):
+            k = str(i)
+            if 쿨.get(k, 0) > 0:
+                쿨[k] -= 1
+                continue
+            조건 = a.get("조건") or {}
+            if "체력이하" in 조건 and self.체력 > self.최대체력 * 조건["체력이하"]:
+                continue
+            적쪽 = any(효.get("종류") in ("피해", "상태") for 효 in a.get("효과", []))
+            if 적쪽 and not self.살아있는적():
+                continue
+            if random.random() >= float(a.get("확률", 1.0)):
+                continue
+            쿨[k] = int(a.get("쿨", 0))
+            self.기록(f"👤 {p['별명']}: 「{a['이름']}」")
+            for 효 in a.get("효과", []):
+                self._스탠드효과(효, 배)
+            self._보류출력()
+            if self.체력 <= 0:
+                return
+
+    def _스탠드효과(self, 효, 배):
+        종 = 효.get("종류")
+        적 = self.살아있는적()
+        대상들 = 적 if 효.get("대상") == "전체" else ([random.choice(적)] if 적 else [])
+        턴 = int(효.get("턴", 1))
+        if 종 == "피해":
+            기본 = self.능력()["무기피해"] * float(효.get("배율", 0.2)) * 배
+            for e in 대상들:
+                준 = self._적에게(e, 기본, "스탠드", 치명가능=bool(효.get("치명", True)))
+                self.기록(f"   ↳ {e['이름']}에게 {준:,} 피해")
+        elif 종 == "상태":
+            이름 = 효.get("이름")
+            for e in 대상들:
+                if e["hp"] > 0:
+                    e["효과"][이름] = max(e["효과"].get(이름, 0), 턴 + 1)     # 이 턴 끝에 한 번 준다
+                    self.기록(f"   ↳ {e['이름']} {이름} {턴}턴")
+        elif 종 == "회복":
+            전 = self.체력
+            self.체력 = min(self.최대체력, self.체력 + max(1, round(self.최대체력 * float(효.get("비율", 0.1)) * 배)))
+            self.기록(f"   ↳ 체력 +{self.체력 - 전}")
+        elif 종 == "방패":
+            self.효과["방패"] = self.효과.get("방패", 0) + int(효.get("횟수", 1))
+            self.기록(f"   ↳ 🛡️ 다음 공격 {효.get('횟수', 1)}번을 막는다")
+        elif 종 == "회피":
+            self.효과["연막"] = max(self.효과.get("연막", 0), 턴 + 1)
+            self.기록(f"   ↳ 💨 {턴}턴 동안 회피 +40%")
+        elif 종 == "해제":
+            for k in ("출혈", "화상", "독", "기절", "혼란", "약화", "둔화", "방어파괴"):
+                self.효과.pop(k, None)
+            self.독중첩 = 0
+            self.기록("   ↳ ✨ 상태이상이 모두 풀렸다")
+        elif 종 == "강화":
+            self.스탠드강화배율 = 1 + (float(효.get("배율", 1.3)) - 1) * 배
+            self.효과["스탠드강화"] = max(self.효과.get("스탠드강화", 0), 턴 + 1)
+            self.기록(f"   ↳ ⚔️ {턴}턴 동안 무기 피해 ×{self.스탠드강화배율:.2f}")
+        elif 종 == "보호":
+            self.스탠드보호비율 = min(0.9, float(효.get("비율", 0.2)) * 배)
+            self.효과["스탠드보호"] = max(self.효과.get("스탠드보호", 0), 턴 + 1)
+            self.기록(f"   ↳ 🛡️ {턴}턴 동안 받는 피해 -{self.스탠드보호비율 * 100:.0f}%")
+        elif 종 == "반사":
+            self.효과["가시철조망"] = max(self.효과.get("가시철조망", 0), 턴 + 1)
+            self.기록(f"   ↳ 🪤 {턴}턴 동안 맞은 피해의 40%를 돌려준다")
 
     def _악세행동(self):
         e = self.악세효과
@@ -3127,6 +3637,11 @@ class 전투:
             피해 = max(1, round(self.최대체력 * 0.03 * self.독중첩))
             self.체력 -= 피해
             self.기록(f"🟢 독({self.독중첩}중첩)으로 {피해} 피해")
+        고통 = getattr(self, "고통", None)
+        if 고통:
+            피해 = 고통.pop(0)
+            self.체력 -= 피해
+            self.기록(f"🐞 뒤늦게 고통이 밀려온다… {피해:,} 피해")
         if self.효과.get("재생") and self.체력 > 0:
             회복 = max(1, round(self.최대체력 * 0.07))
             self.체력 = min(self.최대체력, self.체력 + 회복)
@@ -3146,6 +3661,18 @@ class 전투:
                 e["효과"][k] -= 1
                 if e["효과"][k] <= 0:
                     del e["효과"][k]
+            if e.get("단계") == "메이드 인 헤븐" and self.체력 > 0:
+                e["가속"] += 1
+                if e["가속"] >= 3:
+                    self.기록("⏩ 시간이 끝까지 가속됐다… 우주가 한 바퀴 돌았다. 너는 이미 패배해 있었다")
+                    self.부활남음 = 0
+                    self.체력 = 0
+                elif e["가속"] > 0:
+                    self.기록(f"⏩ 시간 가속 {e['가속']}/3")
+            if e.get("무적", 0) > 0:
+                e["무적"] -= 1
+                if e["무적"] == 0:
+                    self.기록(f"🐞 레퀴엠이 멈췄다. 이제 {e['이름']}에게 공격이 닿는다")
             if "튕기기" in e["패턴"]:
                 e["튕기기"] = random.random() < 0.30          # 다음 내 행동(펫 포함) 동안
                 if e["튕기기"]:
@@ -3209,13 +3736,26 @@ class 전투:
             self._정산()
             return
         if self.비밀 and self.비밀 != "에러조우":
-            보상 = 비밀공간[self.비밀][6]
+            보상들 = 비밀공간[self.비밀][6]
+            보상들 = [보상들] if isinstance(보상들, str) else list(보상들 or [])
             self.기록(f"🏆 {비밀공간[self.비밀][0]}을(를) 쓰러뜨렸다!")
-            if 악세지급(self.uid, 보상):
-                self.기록(f"🎁 {악세서리[보상]['이모지']} **{보상}**을(를) 얻었다!")
-                self.보상악세 = 보상
-            else:
-                self.기록(f"🎁 {보상}은(는) 이미 가지고 있다.")
+            새것 = []
+            for 보상 in 보상들:
+                if 보상 == 스탠드디스크:
+                    if 내스탠드(self.uid) or 스탠드디스크수(self.uid) > 0 or any(
+                            r["종류"] == "생성" for r in 스탠드요청목록(self.uid)):
+                        self.기록(f"🎁 💿 {보상}… 이미 스탠드를 가지고 있다.")
+                        continue
+                    카운트(self.uid, "스탠드디스크", 1)
+                    self.기록(f"🎁 💿 **{보상}**을(를) 얻었다! `!RPG 스탠드` 로 나만의 스탠드를 만들 수 있다")
+                    새것.append(보상)
+                elif 악세지급(self.uid, 보상):
+                    self.기록(f"🎁 {악세서리[보상]['이모지']} **{보상}**을(를) 얻었다!")
+                    새것.append(보상)
+                else:
+                    self.기록(f"🎁 {보상}은(는) 이미 가지고 있다.")
+            if 새것:
+                self.보상악세 = " · ".join(새것)
             self.기록("던전이 끝났다.")
             self.상태 = "철수"
             self._정산()
@@ -3272,6 +3812,11 @@ class 전투:
                 self.최대체력 = max(1, self.능력()["최대체력"] + self.악세효과["체력"])
                 self.체력 = self.최대체력
                 self.기록(f"⬆️ 레벨 업! Lv.{레벨} (체력 회복, 스킬포인트 +{오름 * 레벨업_포인트})")
+        p = getattr(self, "펫", None)
+        if self.획득경험치 > 0 and p and p["이름"] == "스탠드":
+            새레벨, 스오름, 새칸 = 스탠드경험치(self.uid, self.획득경험치)
+            if 스오름:
+                self.기록(f"👤 {p['별명']} Lv.{새레벨}!" + (" — 새 능력을 만들 수 있다 (`!RPG 스탠드 능력`)" if 새칸 else ""))
         self.누적골드 = getattr(self, "누적골드", 0) + self.획득골드
         self.누적경험치 = getattr(self, "누적경험치", 0) + self.획득경험치
         self.획득골드 = self.획득경험치 = 0
@@ -3350,6 +3895,7 @@ class 전투:
         self._펫상태["쿨"] = {k: 0 for k in self._펫상태["쿨"]}
         self.효과 = {k: v for k, v in self.효과.items() if k in ("방패",)}
         self.독중첩 = 0
+        self.고통 = []
         if 특수:
             self._특수층생성()
             return
@@ -3364,6 +3910,9 @@ class 전투:
             return
         if self.층 == 15 and random.random() < 0.01:
             self._비밀입장("개발자의 방")
+            return
+        if self.층 == 푸치_층 and self._정신다모음():
+            self._비밀입장("케이프 커내버럴")
             return
         self._층생성()
         self._에러조우검사()
@@ -3420,6 +3969,8 @@ for _이름 in ("행동", "자동행동", "다음층", "강화선택", "창밖",
 # 관리자용: 비밀공간 바로 입장 (방 이름 → 들어갈 때 기준으로 삼을 층)
 비밀공간_바로가기 = {
     "-1층": 1, "6.5층": 7, "모리오초": 999, "돼지우리": 돼지우리_층, "개발자의 방": 15, "높은곳": 50, "나락": 50, "엣지러너의 방": 258, "재단": 1,
+    **{방: 외침_비밀[방][0] for 방 in ("죠스타 저택", "파문 수련장", "이집트", "베네치아", "그린 돌핀 스트리트 교도소")},
+    "케이프 커내버럴": 푸치_층,
 }
 
 
@@ -4245,21 +4796,25 @@ _열린뷰 = {}          # user_id → 가장 최근에 연 전투뷰
 
 
 async def _외침듣기(message):
-    """전투 중인 사람이 아무 채널에나 채팅으로 외친 말 (지금은 돼지우리_층의 '꾸이익'만)"""
-    if message.author.bot or message.guild is None or "꾸이익" not in (message.content or ""):
+    """전투 중인 사람이 아무 채널에나 채팅으로 외친 말 (외침_비밀의 대사)"""
+    if message.author.bot or message.guild is None:
+        return
+    글 = _외침정리(message.content)
+    if not 글 or not any(_외침정리(대사) in 글 for _, 대사 in 외침_비밀.values()):
         return
     uid = str(message.author.id)
     b = 진행중.get(uid)
     if b is None or not RPG사용가능(uid):
         return
     try:
-        if not b.외침(message.content):
+        방 = b.외침(message.content)
+        if not 방:
             return
     except Exception as e:
         print(f"[{datetime.now()}] RPG 외침 오류 {uid}: {e}")
         return
     try:
-        await message.add_reaction("🐷")
+        await message.add_reaction(비밀공간[방][0].split()[0])
     except discord.HTTPException:
         pass
     뷰 = _열린뷰.get(uid)
@@ -5109,6 +5664,14 @@ def 펫화면(user_id):
     가진 = {p["이름"]: p for p in 내펫들(user_id)}
     for n, d in 펫.items():
         p = 가진.get(n)
+        if d.get("숨김") and not p:
+            continue
+        if p and n == "스탠드":
+            st = 내스탠드(user_id) or {"능력들": []}
+            embed.add_field(name=f"{d['이모지']} {p['별명']} (스탠드) · Lv.{p['능력lv']}" + (" · **장착 중**" if p["장착"] else ""),
+                            value=("\n".join(f"「{a['이름']}」 {a.get('설명', '')}" for a in st["능력들"]) or "능력 없음")[:1000]
+                            + "\n`!RPG 스탠드` 로 자세히", inline=False)
+            continue
         if p:
             제목 = f"{d['이모지']} {p['별명']}" + (f" ({n})" if p["별명"] != n else "") + (" · **장착 중**" if p["장착"] else "")
             내용 = (f"체력 Lv.{p['체력lv']} ({펫최대체력(n, p['체력lv']):,}) · 능력 Lv.{p['능력lv']}\n"
@@ -5120,6 +5683,30 @@ def 펫화면(user_id):
     embed.add_field(name="🗡️ 펫 무기", value=f"{펫무기(user_id) or '맨손'} · `!RPG 펫 무기 [무기]` 로 변경", inline=False)
     q = 간식(user_id)
     embed.set_footer(text=f"🦴 간식 {'∞' if q >= 관리자_무한 else f'{q:,}'} · 레벨업 비용 = 10 × 다음 레벨")
+    return embed
+
+
+def 스탠드화면(user_id):
+    st = 내스탠드(user_id)
+    대기 = 스탠드요청목록(user_id)
+    embed = discord.Embed(title="👤 스탠드", color=0x9B59B6)
+    if st:
+        embed.title = f"👤 {st['이름']} · Lv.{st['레벨']}"
+        다음 = f"{st['경험']:,} / {st['다음']:,}" if st["다음"] else "최대 레벨"
+        칸 = 스탠드능력칸(st["레벨"])
+        embed.description = (f"경험치 {다음} · 능력 {len(st['능력들'])}/{칸}칸 "
+                             f"(Lv.{스탠드_능력간격}마다 1칸, 최대 {스탠드능력칸(스탠드_최대레벨)}칸) · 능력 배율 ×{스탠드_레벨배율(st['레벨']):.2f}\n"
+                             "간식을 먹지 않아요. 펫으로 데리고 싸우면 전투 경험치로 자라요.")
+        for a in st["능력들"]:
+            embed.add_field(name=f"「{a['이름']}」", value=(a.get("설명") or "-")[:1024], inline=False)
+    else:
+        q = 스탠드디스크수(user_id)
+        embed.description = (f"💿 {스탠드디스크} {q}장\n" + ("`!RPG 스탠드 만들기 [이름] | [능력 설명]` 으로 만들어요."
+                             if q else "엔리코 푸치를 쓰러뜨리면 얻을 수 있어요."))
+    if 대기:
+        embed.add_field(name="⏳ 만드는 중",
+                        value="\n".join(f"#{r['id']} {r['종류']} — {r['내용'][:80]}" for r in 대기)[:1024], inline=False)
+    embed.set_footer(text="요청은 관리자가 확인해서 밸런스에 맞게 만들어 줘요 · !RPG 스탠드 능력 [설명] · !RPG 펫 장착 스탠드")
     return embed
 
 
@@ -5152,7 +5739,7 @@ def 업적화면(user_id, 주인):
     "`!RPG 일일` — 매일 바뀌는 10층 던전 · `!RPG 로그라이크` — 맨몸으로 강화를 골라 오르기 · `!RPG 보스러시` — 보스 연속전\n"
     "`!RPG 상점 [무기/갑옷/아이템]` · `!RPG 구매 [이름] [수량]` · `!RPG 판매 [이름] [수량]`\n"
     "`!RPG 장착 [이름]` · `!RPG 가방` · `!RPG 강화 [무기]` · `!RPG 자동강화 [무기] [목표]` · `!RPG 업적` · `!RPG 랭킹`\n"
-    "`!RPG 펫` — 펫 목록 · 구매 · 장착 · 강화\n"
+    "`!RPG 펫` — 펫 목록 · 구매 · 장착 · 강화 · `!RPG 스탠드` — ??? 스탠드 디스크로 나만의 스탠드 만들기\n"
     "`!RPG 악세서리` — 비밀공간에서 얻는 악세서리 · `!RPG 하이퍼버닝` — 획득량 이벤트 확인\n"
     "`!RPG 친선전 @유저` — 전투력 차이를 보정한 1:1 대결\n"
     "`!RPG 골드구매 [골드]` · `!RPG 골드판매 [골드]` — 1골드 = " + f"{골드_환율:,}원"
@@ -5439,6 +6026,36 @@ async def _명령어(ctx, 용도=None, 인자=()):
                 await ctx.reply(r)
             return
         await ctx.reply("사용법: `!RPG 펫` · `구매` · `장착` · `해제` · `강화`")
+        return
+
+    if 용도 == "스탠드":
+        if 캐릭터(uid) is None:
+            await ctx.reply("캐릭터가 없습니다. `!RPG 생성 [이름]` 으로 먼저 만들어주세요.")
+            return
+        하위 = 인자[0] if 인자 else None
+        if 하위 in (None, "정보", "목록"):
+            await ctx.reply(embed=스탠드화면(uid))
+            return
+        if 하위 in ("만들기", "생성"):
+            글 = " ".join(인자[1:])
+            if "|" not in 글:
+                await ctx.reply("사용법: `!RPG 스탠드 만들기 [스탠드 이름] | [능력 설명]`\n"
+                                "예: `!RPG 스탠드 만들기 더 핸드 | 오른손으로 긁은 공간을 지워 버린다`")
+                return
+            이름, 내용 = (x.strip() for x in 글.split("|", 1))
+            성공, r = 스탠드요청(uid, "생성", 내용, 이름)
+            await ctx.reply(f"💿 디스크를 꽂았어요. 스탠드 **{이름}** 요청 #{r}을 보냈어요 — 관리자가 능력을 만들면 완성돼요."
+                            if 성공 else r)
+            return
+        if 하위 == "능력":
+            성공, r = 스탠드요청(uid, "능력", " ".join(인자[1:]))
+            await ctx.reply(f"👤 새 능력 요청 #{r}을 보냈어요 — 관리자가 만들면 붙어요." if 성공 else r)
+            return
+        if 하위 == "장착":
+            성공, r = 펫장착(uid, "스탠드")
+            await ctx.reply("👤 스탠드를 데리고 다녀요." if 성공 else r)
+            return
+        await ctx.reply("사용법: `!RPG 스탠드` · `만들기 [이름] | [능력]` · `능력 [설명]` · `장착`")
         return
 
     if 용도 == "업적":

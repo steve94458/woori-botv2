@@ -373,13 +373,49 @@ function renderPets() {
         <div class="d">${esc(p.owned ? p.skill : p.desc)}${p.owned ? ` · 체력 Lv.${p.hpLv} / 능력 Lv.${p.skillLv}` : ""}</div>
         <div class="btns">${p.owned ? `
           ${p.equipped ? `<button class="btn small" data-pet="equip" data-name="">해제</button>` : `<button class="btn small" data-pet="equip" data-name="${esc(p.name)}">장착</button>`}
+          ${p.name === "스탠드" ? `<span class="muted">간식을 안 먹고 전투 경험치로 자라요</span>` : `
           <button class="btn small" data-pet="rename" data-name="${esc(p.name)}" data-nick="${esc(p.nickname)}">✏️ 이름</button>
           <button class="btn small primary" data-pet="upgrade" data-name="${esc(p.name)}" data-kind="체력" ${p.hpLv >= 99 ? "disabled" : ""}>체력 +1 (🦴${n(p.hpCost)})</button>
-          <button class="btn small primary" data-pet="upgrade" data-name="${esc(p.name)}" data-kind="능력" ${p.skillLv >= 99 ? "disabled" : ""}>능력 +1 (🦴${n(p.skillCost)})</button>`
+          <button class="btn small primary" data-pet="upgrade" data-name="${esc(p.name)}" data-kind="능력" ${p.skillLv >= 99 ? "disabled" : ""}>능력 +1 (🦴${n(p.skillCost)})</button>`}`
         : `<button class="btn small primary" data-pet="buy" data-name="${esc(p.name)}">데려오기</button>`}</div>
-      </div>`).join("");
+      </div>`).join("") + standCard(me.stand);
+}
+function standCard(x) {
+  if (!x || (!x.disks && !x.stand && !x.pending.length && !x.recent.length)) return "";
+  const st = x.stand;
+  const 대기 = x.pending.map((r) => `<div class="muted">⏳ #${r.id} ${esc(r.kind)} — ${esc(r.text)}</div>`).join("");
+  const 지난 = x.recent.map((r) => `<div class="muted">${r.status === "완료" ? "✅" : "❌"} #${r.id} ${esc(r.kind)} ${esc(r.status)}${r.note ? ` — ${esc(r.note)}` : ""}</div>`).join("");
+  const 남은칸 = st ? st.slots - st.abilities.length - x.pending.filter((r) => r.kind === "능력").length : 0;
+  return `<div class="pet" style="margin-top:12px">
+    <div class="top"><b>👤 ${st ? `${esc(st.name)} · Lv.${st.level}` : "스탠드"}</b>
+      <span class="muted">${st ? (st.next ? `경험치 ${n(st.exp)} / ${n(st.next)}` : "최대 레벨") : `💿 디스크 ${x.disks}장`}</span></div>
+    ${st ? `<div class="d">${st.abilities.map((a) => `「${esc(a.name)}」 ${esc(a.desc)}`).join("<br>") || "능력 없음"}<br>
+      <span class="muted">능력 ${st.abilities.length}/${st.slots}칸 · Lv.20마다 1칸 더 (최대 6칸)</span></div>` : ""}
+    ${대기}${지난}
+    <div class="btns">
+      ${!st && x.disks && !x.pending.length ? `<button class="btn small primary" data-stand="create">💿 스탠드 만들기</button>` : ""}
+      ${st && 남은칸 > 0 ? `<button class="btn small primary" data-stand="ability">➕ 새 능력 요청</button>` : ""}
+    </div>
+    <p class="muted" style="margin:6px 0 0;font-size:13px">요청은 관리자가 확인해서 밸런스에 맞게 능력을 만들어 줘요.</p>
+  </div>`;
 }
 $("#pets").addEventListener("click", (e) => {
+  const sb = e.target.closest("button[data-stand]");
+  if (sb) {
+    let 이름 = "";
+    if (sb.dataset.stand === "create") {
+      이름 = prompt("스탠드 이름 (1~20자)");
+      if (!이름) return;
+    }
+    const 내용 = prompt(sb.dataset.stand === "create" ? "어떤 능력이면 좋겠어요? (300자까지)" : "새 능력을 설명해 주세요 (300자까지)");
+    if (!내용) return;
+    run(async () => {
+      const r = await api("api/rpg/stand", { kind: sb.dataset.stand, name: 이름, text: 내용 });
+      toast(`👤 요청 #${r.result.id}을 보냈어요. 관리자가 만들면 완성돼요!`);
+      await load();
+    });
+    return;
+  }
   const b = e.target.closest("button[data-pet]"); if (!b) return;
   let 새이름;
   if (b.dataset.pet === "rename") {

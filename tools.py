@@ -2515,6 +2515,13 @@ def RPG펫(user_id, action, name=None, kind=None):
         가진 = {p["이름"]: p for p in R.내펫들(user_id)}
         for n, d in R.펫.items():
             p = 가진.get(n)
+            if d.get("숨김") and not p:
+                continue
+            if p and n == "스탠드":
+                st = R.내스탠드(user_id) or {"능력들": []}
+                줄.append(f"스탠드 '{p['별명']}'{' (장착)' if p['장착'] else ''} Lv.{p['능력lv']} — 능력: "
+                         + (", ".join(f"{a['이름']}({a.get('설명', '')})" for a in st["능력들"]) or "없음"))
+                continue
             줄.append(f"{n}: " + (f"보유{' (장착)' if p['장착'] else ''} 체력 Lv.{p['체력lv']} 능력 Lv.{p['능력lv']} — {R.펫능력문구(n, p['능력lv'])}"
                                    if p else f"{d['price']:,}골드 — {d['설명']}"))
         return "\n".join(줄) + f"\n펫 무기: {R.펫무기(user_id) or '맨손'} · 간식 {R.간식(user_id)}"
