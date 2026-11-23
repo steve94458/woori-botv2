@@ -986,7 +986,7 @@ def RPG내정보(request: Request):
             "snacks": RPG.간식(uid),
             "petWeapon": RPG.펫무기(uid),
             "accessoryMax": RPG.악세_최대,
-            "accessories": [{"name": n, "emoji": d["이모지"], "desc": d["설명"],
+            "accessories": [{"name": n, "emoji": d["이모지"], "desc": d["설명"], "hint": d.get("힌트") if n not in 가진악세 else None,
                              "owned": n in 가진악세, "equipped": 가진악세.get(n, False)}
                             for n, d in RPG.악세서리.items()],
             "hyper": (lambda h: {"rate": h[0], "until": h[1].isoformat(timespec="milliseconds")} if h[1] else None)(RPG.하이퍼버닝()),
@@ -1025,6 +1025,7 @@ def _펫정보(uid):
 def _스탠드정보(uid):
     st = RPG.내스탠드(uid)
     return {
+        "hint": RPG.스탠드디스크_힌트,
         "disks": RPG.스탠드디스크수(uid),
         "stand": ({"name": st["이름"], "level": st["레벨"], "exp": st["경험"], "next": st["다음"],
                    "slots": RPG.스탠드능력칸(st["레벨"]), "abilities": [{"name": a["이름"], "desc": a.get("설명", "")} for a in st["능력들"]]}

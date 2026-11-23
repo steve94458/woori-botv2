@@ -354,7 +354,7 @@ function renderAccs() {
         <div class="top"><b>${a.emoji} ${esc(a.name)}${a.equipped ? ` <span class="tag on">착용 중</span>` : ""}</b>
           ${a.equipped ? `<button class="btn small" data-acc="${esc(a.name)}" data-off="1">해제</button>`
             : `<button class="btn small primary" data-acc="${esc(a.name)}"${worn >= max ? " disabled" : ""}>착용</button>`}</div>
-        <div class="d">${esc(a.desc)}</div></div>` : `<div class="pet" style="opacity:.5"><b>❔ ???</b></div>`).join("");
+        <div class="d">${esc(a.desc)}</div></div>` : `<div class="pet" style="opacity:.5"><b>❔ ???</b>${a.hint ? `<div class="d">💡 ${esc(a.hint)}</div>` : ""}</div>`).join("");
 }
 $("#accs").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-acc]"); if (!b) return;
@@ -381,7 +381,9 @@ function renderPets() {
       </div>`).join("") + standCard(me.stand);
 }
 function standCard(x) {
-  if (!x || (!x.disks && !x.stand && !x.pending.length && !x.recent.length)) return "";
+  if (!x) return "";
+  if (!x.disks && !x.stand && !x.pending.length && !x.recent.length)
+    return `<div class="pet" style="margin-top:12px;opacity:.6"><b>💿 ???</b><div class="d">💡 ${esc(x.hint)}</div></div>`;
   const st = x.stand;
   const 대기 = x.pending.map((r) => `<div class="muted">⏳ #${r.id} ${esc(r.kind)} — ${esc(r.text)}</div>`).join("");
   const 지난 = x.recent.map((r) => `<div class="muted">${r.status === "완료" ? "✅" : "❌"} #${r.id} ${esc(r.kind)} ${esc(r.status)}${r.note ? ` — ${esc(r.note)}` : ""}</div>`).join("");
