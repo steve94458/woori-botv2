@@ -5077,16 +5077,18 @@ class 전투뷰(discord.ui.View):
             이전 = b.로그[: max(0, len(b.로그) - len(새줄))]
             # 디스코드 수정 제한을 넘지 않게 최대 6단계로 나눈다
             단계 = max(1, math.ceil(len(새줄) / 6))
-            for i in range(단계, len(새줄) + 단계, 단계):
-                embed = 전투화면(b, self.주인, 보일로그=이전 + 새줄[:i])
-                if i == 단계:
-                    await interaction.response.edit_message(embed=embed, view=self)
-                else:
-                    await asyncio.sleep(0.45)
-                    await interaction.edit_original_response(embed=embed, view=self)
-            await asyncio.sleep(0.3)
-            self._구성()
-            self.재생중 = False
+            try:
+                for i in range(단계, len(새줄) + 단계, 단계):
+                    embed = 전투화면(b, self.주인, 보일로그=이전 + 새줄[:i])
+                    if i == 단계:
+                        await interaction.response.edit_message(embed=embed, view=self)
+                    else:
+                        await asyncio.sleep(0.45)
+                        await interaction.edit_original_response(embed=embed, view=self)
+                await asyncio.sleep(0.3)
+            finally:
+                self._구성()                       # 중간에 수정이 실패해도 버튼은 다시 켜 둔다 (`!RPG 던전`으로 다시 띄울 수 있게)
+                self.재생중 = False
             await interaction.edit_original_response(embed=최종화면(), view=None if 끝남 else self)
 
         if 끝남:
@@ -6194,6 +6196,18 @@ async def _명령어(ctx, 용도=None, 인자=()):
 
     if 용도 in ("던전", "전투", "탐험"):
         if 전투중(uid):
+            # 디스코드 전투면 화면을 여기로 새로 띄운다 (앱이 수정을 못 받아 버튼이 회색으로 멈춰 보일 때 빠져나올 길)
+            뷰, b = _열린뷰.get(uid), 진행중.get(uid)
+            if 뷰 is not None and b is not None and 뷰.b is b and not 뷰.is_finished() and not 뷰.재생중:
+                옛 = 뷰.message
+                뷰._구성()
+                뷰.message = await ctx.reply("🔁 진행 중인 전투 화면을 다시 띄웠어요.", embed=전투화면(b, ctx.author), view=뷰)
+                if 옛 is not None:
+                    try:
+                        await 옛.delete()
+                    except discord.HTTPException:
+                        pass
+                return
             await ctx.reply("이미 던전에 들어가 있어요. 디스코드나 웹에서 진행 중인 전투를 마치고 오세요.")
             return
         층 = 시작층(uid)
