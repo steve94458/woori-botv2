@@ -2600,7 +2600,7 @@ class 전투:
             보상 = [보상] if isinstance(보상, str) else list(보상)
             if not all(n in 가진 for n in 보상):
                 self.기록(문구)
-                self.기록("   💬 디스코드 아무 채널에 그 말을 외쳐 보자")
+                self.기록("   💬 디스코드 아무 채널이나 웹 전투 화면의 📣 외치기 칸에 그 말을 외쳐 보자")
         if self.층 == 푸치_층 and 가진 is not None and "죠린의 황금빛 정신" in 가진:
             n = sum(1 for x in 황금빛정신 if x in 가진)
             self.기록(f"✝️ 품속의 황금빛 정신이 희미하게 떨린다… ({n}/{len(황금빛정신)}) 다 모이면 이곳에서 무언가가 일어날 것 같다")

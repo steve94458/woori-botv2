@@ -539,6 +539,12 @@ function renderDungeon(b, 보일로그) {
       <div class="bar pet-bar"><i style="width:${b.pet.hp / b.pet.max * 100}%"></i></div>
       <div class="tags-me">🗡️ ${esc(b.pet.weapon || "맨손")} · ${esc(b.pet.skill)}</div></div>` : ""}
     <div class="log" id="log">${(보일로그 || b.log).map(esc).join("<br>")}</div>
+    ${!S.auto && !b.title && !b.special && !b.raid && (b.state === "전투" || b.state === "클리어") ? `
+      <div class="shout" style="display:flex;gap:6px;margin-bottom:8px">
+        <input id="shout-in" maxlength="200" autocomplete="off" placeholder="📣 외치기 (디스코드 채팅에 외치는 것과 같아요)" aria-label="외칠 말"
+          style="flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:7px 9px">
+        <button class="btn small" data-shout="1">📣 외치기</button>
+      </div>` : ""}
     ${S.auto
       ? `<button class="btn danger" data-auto="off" style="width:100%">⏹️ ${S.full ? "풀오토" : "자동"} 정지</button>`
       : b.special ? (b.special.choices.length ? "" : `<div class="actions" style="grid-template-columns:1fr;margin-bottom:8px">
@@ -617,8 +623,16 @@ $("#dungeon").addEventListener("click", (e) => {
     if (S.full) toast("⏩ 풀오토 — 상인도 건너뛰고 계속 올라가요");
     renderDungeon(S.me.battle); return 자동루프();
   }
+  if (t.dataset.shout) {
+    const text = ($("#shout-in")?.value || "").trim(); if (!text) return;
+    return run(async () => { const r = await api("api/rpg/dungeon/shout", { text }); S.target = 0; await 재생(r.result); });
+  }
   if (t.dataset.go === "ok") { S.result = null; S.target = 0; S.resume = false; return renderDungeon(null); }
   if (t.dataset.go) return run(async () => { const r = await api(`api/rpg/dungeon/${t.dataset.go}`, {}); S.target = 0; await 재생(r.result); });
+});
+
+$("#dungeon").addEventListener("keydown", (e) => {
+  if (e.target.id === "shout-in" && e.key === "Enter" && !e.isComposing) { e.preventDefault(); $("#dungeon [data-shout]")?.click(); }
 });
 
 // 자동 모드: 서버가 한 걸음씩 결정하고, 멈출 이유가 생기면 멈춘다

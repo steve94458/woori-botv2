@@ -1297,6 +1297,13 @@ async def RPG던전(action: str, request: Request):
         elif action == "window":
             if not b.창밖():
                 return _결과(False, "지금은 창밖으로 나갈 수 없습니다.")
+        elif action == "shout":
+            # 디스코드 채팅으로 외치는 것과 같다 (외침_비밀의 대사면 그 비밀공간으로)
+            말 = str(몸.get("text", "")).strip()[:200]
+            if not 말:
+                return _결과(False, "외칠 말을 써 주세요.")
+            if not b.외침(말):
+                return _결과(False, f"📣 \"{말[:40]}\" … 아무 일도 일어나지 않았다.")
         elif action == "leave":
             b.철수()
             b.기록("🏳️ 던전에서 나왔다")
