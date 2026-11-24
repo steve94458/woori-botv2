@@ -988,7 +988,7 @@ def RPG내정보(request: Request):
             "accessoryMax": RPG.악세_최대,
             "accessories": [{"name": n, "emoji": d["이모지"], "desc": d["설명"], "hint": d.get("힌트") if n not in 가진악세 else None,
                              "owned": n in 가진악세, "equipped": 가진악세.get(n, False)}
-                            for n, d in RPG.악세서리.items()],
+                            for n, d in RPG.악세서리.items() if n not in RPG.황금빛정신],
             "hyper": (lambda h: {"rate": h[0], "until": h[1].isoformat(timespec="milliseconds")} if h[1] else None)(RPG.하이퍼버닝()),
             "pets": _펫정보(uid),
             "stand": _스탠드정보(uid),

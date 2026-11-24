@@ -1651,7 +1651,7 @@ def 악세지급(user_id, 이름):
     """새로 얻었으면 True. 빈 칸이 있으면 바로 착용한다."""
     cursor.execute("INSERT OR IGNORE INTO rpg_accessories (user_id, name, at) VALUES (?, ?, ?)", (user_id, 이름, _지금()))
     새로 = cursor.rowcount > 0
-    if 새로:
+    if 새로 and 이름 not in 황금빛정신:     # 황금빛 정신은 목록에 안 보이는 수집품이라 착용 칸을 안 쓴다
         cursor.execute(
             "UPDATE rpg_accessories SET equipped = 1 WHERE user_id = ? AND name = ? "
             "AND (SELECT COUNT(*) FROM rpg_accessories WHERE user_id = ? AND equipped = 1) < ?",
@@ -1682,7 +1682,7 @@ def 악세장착(user_id, 이름, 해제=False):
             cursor.execute("UPDATE rpg_accessories SET equipped = 0 WHERE user_id = ? AND name = ?", (user_id, n))
         conn.commit()
         return True, None
-    n = _악세찾기(user_id, 이름)
+    n = _악세찾기(user_id, 이름, [a["이름"] for a in 내악세서리(user_id) if a["이름"] not in 황금빛정신])
     if n is None:
         return False, f"'{이름}' 악세서리를 가지고 있지 않습니다."
     if n in 착용악세(user_id):
@@ -5957,6 +5957,8 @@ async def _명령어(ctx, 용도=None, 인자=()):
                               description=f"상점에서 살 수 없고, 던전 어딘가의 비밀공간에서만 얻을 수 있어요. 최대 {악세_최대}개까지 착용할 수 있어요.\n"
                                           f"착용 중: {len(착용악세(uid))}/{악세_최대}")
         for n, d in 악세서리.items():
+            if n in 황금빛정신:              # 능력 없는 수집품이라 목록엔 안 보인다
+                continue
             a = 가진.get(n)
             embed.add_field(
                 name=f"{d['이모지']} {n}" + (" · **착용 중**" if a and a["장착"] else "") if a else "❔ ???",
