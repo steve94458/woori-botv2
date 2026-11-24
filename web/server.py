@@ -1028,7 +1028,7 @@ def _스탠드정보(uid):
         "hint": RPG.스탠드디스크_힌트,
         "disks": RPG.스탠드디스크수(uid),
         "stand": ({"name": st["이름"], "level": st["레벨"], "exp": st["경험"], "next": st["다음"],
-                   "slots": RPG.스탠드능력칸(st["레벨"]), "abilities": [{"name": a["이름"], "desc": a.get("설명", "")} for a in st["능력들"]]}
+                   "slots": RPG.스탠드능력칸(st["레벨"]), "abilities": [{"name": a["이름"], "desc": RPG.스탠드능력문구(a, st["레벨"])} for a in st["능력들"]]}
                   if st else None),
         "pending": [{"id": r["id"], "kind": r["종류"], "text": r["내용"]} for r in RPG.스탠드요청목록(uid)],
         "recent": [{"id": r["id"], "kind": r["종류"], "status": r["상태"], "note": r["메모"]}
