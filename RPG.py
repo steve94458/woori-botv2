@@ -4988,6 +4988,8 @@ def 업적알림(이름들):
 메시지_교체분 = 55        # 디스코드는 만든 지 1시간 넘은 메시지의 수정을 훨씬 세게 막는다(429 가 몇 초마다).
                           # 자동전투 화면이 이만큼 오래되면 새 메시지로 옮기고 옛 메시지는 지운다
 _수정차례표 = {}          # 채널 id -> 다음 수정이 가능한 시각(monotonic)
+웹훅_한도초 = 4.0         # 버튼 응답 웹훅 수정을 이만큼까지만 기다린다 (전투뷰._제때)
+웹훅_쉼초 = 300           # 한 번 막히면 이만큼 한 줄씩 보여주기를 끄고 바로 보여준다
 
 
 async def 수정차례(채널id):
@@ -5275,6 +5277,37 @@ class 전투뷰(discord.ui.View):
         except discord.HTTPException:
             pass
 
+    async def _제때(self, 코루틴, 한도=웹훅_한도초):
+        """버튼 응답 웹훅 수정(edit_original_response)을 한도 초까지만 기다린다. 끝나면 True.
+        디스코드가 웹훅 한도를 다 썼다고 하면 discord.py 가 로그 없이 그 시간(몇 분일 때도 있다)만큼 잠그고 기다려서,
+        그동안 버튼이 꺼진 채(회색)로 멈춰 보였다. 넘기면 웹훅 수정은 `웹훅_쉼초` 동안 안 쓰고 봇 권한 수정으로 넘어간다.
+        작업은 취소하지 않는다(취소하면 discord.py 잠금이 안 풀린다). 늦게 끝나면 그때 화면을 지금 상태로 다시 그린다."""
+        작업 = asyncio.ensure_future(코루틴)
+        시작 = _time.monotonic()
+        try:
+            await asyncio.wait_for(asyncio.shield(작업), 한도)
+            return True
+        except asyncio.TimeoutError:
+            pass
+        self._웹훅막힘 = _time.monotonic() + 웹훅_쉼초
+        print(f"[{datetime.now()}] RPG 버튼 화면 수정이 {한도:.0f}초 넘게 막힘 ({self.주인.id}) — 봇 권한 수정으로 넘어감")
+
+        async def 다시그림():
+            try:
+                await 작업
+            except Exception:
+                return
+            print(f"[{datetime.now()}] RPG 막혔던 화면 수정 끝남 {_time.monotonic() - 시작:.0f}초 ({self.주인.id})")
+            if self.is_finished() or self.재생중 or self.message is None:
+                return
+            try:
+                self._구성()
+                await self._화면수정(embed=전투화면(self.b, self.주인), view=self)
+            except Exception:
+                pass
+        asyncio.ensure_future(다시그림())
+        return False
+
     def _자동기록(self):
         self.b.자동복원 = [True, bool(getattr(self, "풀오토", False))] if self.자동 else None
         전투저장(self.b)
@@ -5310,8 +5343,17 @@ class 전투뷰(discord.ui.View):
                 )
             return embed
 
-        # 한 번에 보여줄 줄이 한두 줄이면 그냥 바로 보여준다
-        if len(새줄) <= 1:
+        try:
+            나이 = (discord.utils.utcnow() - self.message.created_at).total_seconds() if self.message else 0
+        except Exception:
+            나이 = 0
+        if 나이 >= 메시지_교체분 * 60:
+            # 1시간 가까이 된 화면은 디스코드가 수정을 세게 막는다 — 새 메시지로 옮긴다 (자동과 같은 방법)
+            self._구성()
+            await interaction.response.defer()
+            await self._화면수정(embed=최종화면(), view=None if 끝남 else self)
+        # 한 번에 보여줄 줄이 한두 줄이거나, 방금 웹훅 수정이 막혔으면 그냥 바로 보여준다
+        elif len(새줄) <= 1 or _time.monotonic() < getattr(self, "_웹훅막힘", 0):
             self._구성()
             await interaction.response.edit_message(embed=최종화면(), view=None if 끝남 else self)
         else:
@@ -5321,6 +5363,7 @@ class 전투뷰(discord.ui.View):
             이전 = b.로그[: max(0, len(b.로그) - len(새줄))]
             # 디스코드 수정 제한을 넘지 않게 최대 6단계로 나눈다
             단계 = max(1, math.ceil(len(새줄) / 6))
+            막힘 = False
             try:
                 for i in range(단계, len(새줄) + 단계, 단계):
                     embed = 전투화면(b, self.주인, 보일로그=이전 + 새줄[:i])
@@ -5328,12 +5371,16 @@ class 전투뷰(discord.ui.View):
                         await interaction.response.edit_message(embed=embed, view=self)
                     else:
                         await asyncio.sleep(0.45)
-                        await interaction.edit_original_response(embed=embed, view=self)
-                await asyncio.sleep(0.3)
+                        if not await self._제때(interaction.edit_original_response(embed=embed, view=self)):
+                            막힘 = True
+                            break
+                if not 막힘:
+                    await asyncio.sleep(0.3)
             finally:
                 self._구성()                       # 중간에 수정이 실패해도 버튼은 다시 켜 둔다 (`!RPG 던전`으로 다시 띄울 수 있게)
                 self.재생중 = False
-            await interaction.edit_original_response(embed=최종화면(), view=None if 끝남 else self)
+            if 막힘 or not await self._제때(interaction.edit_original_response(embed=최종화면(), view=None if 끝남 else self)):
+                await self._화면수정(embed=최종화면(), view=None if 끝남 else self)   # 웹훅이 막혔으니 봇 권한으로 고친다
 
         if 끝남:
             self.stop()
