@@ -2421,6 +2421,18 @@ RPG펫_선언 = _선언(
      "kind": {"type": "string", "description": "upgrade 일 때 '체력' 또는 '능력'"}}, ("action",),
 )
 RPG업적_선언 = _선언("rpg_achievements", "RPG 업적 목록과 달성 여부, 보상을 본다.")
+RPG도감_선언 = _선언(
+    "rpg_info",
+    "RPG 게임 정보를 정확한 수치로 본다. category: weapon(무기 공격력·가격·해금·탄약·특수 효과·내 강화), "
+    "armor(갑옷 방어력·회피 감소·속성 저항), accessory(악세서리 실제 수치 — 아직 못 얻은 것은 봇 화면처럼 숨김), "
+    "pet(펫 체력·공격·대신 맞는 비율·능력 레벨별 수치), stand(스탠드 레벨·능력 전체 수치 — user 로 다른 사람 스탠드도 본다, "
+    "user 를 비우면 내 스탠드 + 전체 스탠드 목록), stat(능력치 공식 + 장비·악세·스탠드를 합친 최종 수치 — user 로 다른 사람도), "
+    "item(아이템). name 을 주면 그것 하나만 본다. 수치·밸런스·'이 무기 몇 배야' 같은 질문에 쓴다.",
+    {"category": {"type": "string", "description": "weapon / armor / accessory / pet / stand / stat / item"},
+     "name": {"type": "string", "description": "볼 것 이름 (앞부분만 써도 됨). 비우면 전체"},
+     "user": {"type": "string", "description": "stand·stat 에서 볼 다른 유저 (닉네임·RPG 캐릭터 이름·스탠드 이름·디코 ID). 비우면 본인"}},
+    ("category",),
+)
 
 
 def RPG정보(user_id):
@@ -2538,6 +2550,219 @@ def RPG펫(user_id, action, name=None, kind=None):
         ok, r = R.펫무기설정(user_id, name)
         return (f"펫이 {r}을(를) 듭니다." if r else "펫이 맨손으로 싸웁니다.") if ok else r
     return "action 은 info / buy / equip / unequip / upgrade / weapon 중 하나여야 합니다."
+
+
+def _RPG대상(user, 본인):
+    """닉네임·RPG 캐릭터 이름·스탠드 이름·디코 ID → user_id (못 찾으면 None)"""
+    if not user or not str(user).strip():
+        return 본인
+    R, 이름 = _rpg(), str(user).strip().lstrip("@")
+    숫자 = re.sub(r"\D", "", 이름)
+    if 숫자 and len(숫자) >= 15:
+        return 숫자
+    for 표, 열 in (("rpg_characters", "name"), ("rpg_stands", "name")):
+        R.cursor.execute(f"SELECT user_id FROM {표} WHERE LOWER({열}) = LOWER(?)", (이름,))
+        r = R.cursor.fetchone()
+        if r:
+            return str(r[0])
+    for 표, 열 in (("rpg_characters", "name"), ("rpg_stands", "name")):
+        R.cursor.execute(f"SELECT user_id FROM {표} WHERE {열} LIKE ?", (f"%{이름}%",))
+        rows = R.cursor.fetchall()
+        if len(rows) == 1:
+            return str(rows[0][0])
+    try:
+        uid, _ = _find_user_by_name(이름)
+        if uid:
+            return str(uid)
+    except Exception:
+        pass
+    try:
+        m = _멤버찾기(이름) if _봇() else []
+        if len(m) == 1:
+            return str(m[0].id)
+    except Exception:
+        pass
+    return None
+
+
+def _고르기(표, name):
+    """name 이 있으면 정확히 → 앞부분 → 포함 순으로 그 항목만"""
+    if not name:
+        return list(표)
+    n = str(name).strip().lower()
+    for 맞음 in (lambda k: k.lower() == n, lambda k: k.lower().startswith(n), lambda k: n in k.lower()):
+        고른 = [k for k in 표 if 맞음(k)]
+        if 고른:
+            return 고른
+    return []
+
+
+def _해금문구(d):
+    return (f"Lv.{d['lv']} 해금" if d.get("lv") else "") + (f"업적 '{d['ach']}' 해금" if d.get("ach") else "") or "처음부터"
+
+
+def _악세수치(R, n):
+    x = R._악세효과하나(n)
+    줄 = []
+    if n == "3rR0r의 빛나는 스커프":
+        줄.append("공격력 ×1.8~2.2 (던전마다 무작위)")
+    elif x["공격배율"] != 1:
+        줄.append(f"공격력 ×{x['공격배율']:g}")
+    if x["피해배율"] != 1:
+        줄.append(f"받는 피해 ×{x['피해배율']:g}")
+    if x["체력"]:
+        줄.append(f"최대체력 {x['체력']:+d}")
+    if x["회피"]:
+        줄.append(f"회피 {x['회피'] * 100:+.0f}%p")
+    if x["턴회복"]:
+        줄.append(f"매 턴 최대체력 {x['턴회복'] * 100:g}% 회복")
+    if x["회복확률"]:
+        줄.append(f"매 턴 {x['회복확률'] * 100:g}% 확률로 체력 {x['회복량']} 회복")
+    if x["부활"]:
+        줄.append(f"부활 {x['부활']}회 (체력 {x['부활체력'] * 100:g}%로)")
+    켜짐 = {"면역": "상태이상 면역", "산데": "산데비스탄(매 턴 30% 확률로 3턴 동안 회피 100%·피해 +20%, 끝나면 3턴 대기)",
+            "펫부활": "펫이 쓰러지면 바로 부활", "위기회복": "체력 20% 이하면 최대체력 50% 회복(5턴 대기)",
+            "꼬리": "매 턴 10% 확률로 보스 아닌 적 하나 즉사", "랜덤대상": "공격 대상이 무작위",
+            "에러조우": "층마다 5% 확률로 3rR0r404 조우"}
+    줄 += [글 for k, 글 in 켜짐.items() if x.get(k)]
+    return " · ".join(줄) or "능력 없음"
+
+
+def _스탠드상세(R, uid):
+    st = R.내스탠드(uid)
+    if st is None:
+        return None
+    c = R.캐릭터(uid) or {}
+    lv = st["레벨"]
+    줄 = [f"👤 스탠드 '{st['이름']}' (주인 {c.get('name', '?')}) Lv.{lv}/{R.스탠드_최대레벨}"
+         + (f" · 경험치 {st['경험']:,}/{st['다음']:,}" if st["다음"] else "")
+         + f" · 레벨배율 ×{R.스탠드_레벨배율(lv):.2f} (능력 수치에 곱함, 턴·횟수·즉사 확률은 안 곱함)"
+         + f" · 능력 {len(st['능력들'])}/{R.스탠드능력칸(lv)}칸"]
+    for a in st["능력들"]:
+        원 = {k: v for k, v in a.items() if k not in ("이름", "설명")}
+        if a.get("효과") and ("쿨" in a or "쿨레벨" in a):
+            원["지금_쿨"] = R.스탠드쿨(a, lv)
+        줄.append(f"- 「{a['이름']}」 {R.스탠드능력문구(a, lv)}\n  원본 수치: {json.dumps(원, ensure_ascii=False)}")
+    줄.append("(원본 수치 읽는 법: 확률=매 턴 발동 확률, 쿨=발동 뒤 쉬는 턴, 조건.층턴=층마다 그 턴에 한 번, 효과.늦게=N턴 뒤, "
+             "상시=늘 켜짐(×레벨배율), 즉사=공격 맞을 때 확률(보스는 무기피해×3×레벨배율))")
+    return "\n".join(줄)
+
+
+def RPG도감(user_id, category, name=None, user=None):
+    R = _rpg()
+    cat = str(category or "").strip().lower()
+    cat = {"무기": "weapon", "갑옷": "armor", "방어구": "armor", "악세서리": "accessory", "악세": "accessory",
+           "펫": "pet", "스탠드": "stand", "스탯": "stat", "능력치": "stat", "아이템": "item"}.get(cat, cat)
+    if cat == "weapon":
+        줄 = [f"무기 피해 = (기본 공격 {R.기본_공격력} + 힘×{R.힘당_공격력} + 무기 공격) × (1 + 강화×{R.강화당_공격력:g}) · "
+             f"치명타 ×{R.치명_배율:g} · 펫이 들면 (펫 공격 + 무기 공격) × 강화"]
+        for n in _고르기(R.무기, name):
+            d = R.무기[n]
+            if d.get("숨김") and not R.보유(user_id, "weapon", n):
+                continue
+            강 = R.강화수치(user_id, n) if R.보유(user_id, "weapon", n) else None
+            줄.append(f"{n}: 공격 {d['atk']}" + (f" ×{d['배율']}" if d.get("배율") else "")
+                     + f" · {(str(d['price']) + '골드') if d['price'] else '무료/업적'} · {_해금문구(d)}"
+                     + (f" · 탄약 {d['탄약'][0]} {d['탄약'][1]}개/공격" if d.get("탄약") else "")
+                     + f" · {d['설명']}" + (f" · 보유 +{강}" if 강 is not None else ""))
+        return "\n".join(줄) if len(줄) > 1 else "그런 무기가 없습니다."
+    if cat == "armor":
+        줄 = ["받는 피해 = 적 공격 × 100/(100+방어력) × (1-속성 저항) × 악세 받는 피해 배율. 회피 감소는 회피에서 뺌"]
+        for n in _고르기(R.갑옷, name):
+            d = R.갑옷[n]
+            저항 = ", ".join(f"{k} {v * 100:.0f}%" for k, v in d["저항"].items())
+            줄.append(f"{n}: 방어 {d['dfn']} · 회피 -{d['pen'] * 100:g}% · 저항 {저항 or '없음'} · "
+                     f"{(str(d['price']) + '골드') if d['price'] else '무료/업적'} · {_해금문구(d)}"
+                     + (" · 보유" if R.보유(user_id, "armor", n) else ""))
+        return "\n".join(줄) if len(줄) > 1 else "그런 갑옷이 없습니다."
+    if cat == "accessory":
+        가진 = {a["이름"]: a for a in R.내악세서리(user_id)}
+        줄 = [f"최대 {R.악세_최대}개 착용. 여러 개면 공격·받는 피해 배율은 곱하고 체력·회피는 더하고, 부활은 체력 많이 남기는 것부터. "
+             "비밀공간에서만 얻는다. 아직 못 얻은 건 이름·수치를 알려 주지 않는다(봇 화면과 같음 — 힌트만)."]
+        for n in _고르기(R.악세서리, name):
+            d = R.악세서리[n]
+            a = 가진.get(n)
+            if n in R.황금빛정신 and not a:
+                continue
+            if a:
+                줄.append(f"{d['이모지']} {n}{' (착용 중)' if a['장착'] else ''}: {_악세수치(R, n)}")
+            elif not name:
+                줄.append("❔ ???: " + (f"힌트 — {d['힌트']}" if d.get("힌트") else "아직 얻지 못했다"))
+        if len(줄) == 1:
+            return "그런 악세서리가 없거나 아직 얻지 못했습니다."
+        return "\n".join(줄)
+    if cat == "pet":
+        가진 = {p["이름"]: p for p in R.내펫들(user_id)}
+        줄 = [f"펫 체력 = 기본 + 체력Lv×(Lv당), 펫 공격 = 기본 공격 + 능력Lv, 매 턴 {R.펫_공격확률 * 100:.0f}% 확률로 공격, "
+             f"최대 Lv.{R.펫_최대레벨}. 대신 맞기 = 주인이 받을 피해 중 그 비율을 펫이 맞음"]
+        for n in _고르기(R.펫, name):
+            d = R.펫[n]
+            p = 가진.get(n)
+            if d.get("숨김") and not p:
+                continue
+            if n == "스탠드":
+                줄.append("스탠드: 체력·분담 없음, 쓰러지지 않음, 간식 안 먹음 — 자세한 건 category=stand")
+                continue
+            lv = p["능력lv"] if p else 0
+            줄.append(f"{n}: 체력 {d['hp']}+{d['hp당']}/Lv · 기본 공격 {d['공격']} · 대신 맞기 {d['분담'] * 100:.0f}% · "
+                     f"{d['price']:,}골드 · " + (f"보유{' (장착)' if p['장착'] else ''} 체력Lv {p['체력lv']} 능력Lv {lv} → 지금: {R.펫능력문구(n, lv)} · "
+                                                f"체력 {R.펫최대체력(n, p['체력lv'])}" if p else
+                                                f"Lv.0: {R.펫능력문구(n, 0)} / Lv.{R.펫_최대레벨}: {R.펫능력문구(n, R.펫_최대레벨)}"))
+        return "\n".join(줄) + f"\n펫 무기: {R.펫무기(user_id) or '맨손'}"
+    if cat == "stand":
+        대상 = _RPG대상(user, user_id)
+        if 대상 is None:
+            return f"'{user}' 유저를 찾지 못했습니다."
+        if user:
+            return _스탠드상세(R, 대상) or "그 유저는 스탠드가 없습니다."
+        R.cursor.execute("SELECT s.user_id, s.name, s.level, s.abilities, c.name FROM rpg_stands s "
+                         "LEFT JOIN rpg_characters c ON c.user_id = s.user_id ORDER BY s.level DESC")
+        목록 = [f"- '{n}' Lv.{lv} (주인 {cn or '?'}) 능력: " + ", ".join(a.get("이름", "?") for a in json.loads(ab or "[]"))
+              for u, n, lv, ab, cn in R.cursor.fetchall()]
+        내것 = _스탠드상세(R, user_id)
+        return ((내것 + "\n\n") if 내것 else "내 스탠드는 없습니다.\n\n") + "전체 스탠드 (자세히 보려면 user 에 스탠드 이름):\n" + ("\n".join(목록) or "없음")
+    if cat == "stat":
+        대상 = _RPG대상(user, user_id)
+        if 대상 is None:
+            return f"'{user}' 유저를 찾지 못했습니다."
+        c = R.캐릭터(대상)
+        if c is None:
+            return "RPG 캐릭터가 없습니다."
+        s = R.전투능력(c)
+        낀 = R.착용악세(대상)
+        스커프 = "3rR0r의 빛나는 스커프" in 낀
+        악 = R.악세효과([n for n in 낀 if n != "3rR0r의 빛나는 스커프"])       # 스커프 공격은 던전마다 무작위라 따로 적는다
+        if 스커프:
+            x = R._악세효과하나("3rR0r의 빛나는 스커프")
+            악["피해배율"] *= x["피해배율"]; 악["체력"] += x["체력"]; 악["부활"] += x["부활"]
+        스탠드 = next((p for p in R.내펫들(대상) if p["장착"] and p["이름"] == "스탠드"), None)
+        상시 = {}
+        if 스탠드:
+            배 = R.스탠드_레벨배율(스탠드["능력lv"])
+            for a in (R.내스탠드(대상) or {}).get("능력들", []):
+                for k, v in (a.get("상시") or {}).items():
+                    상시[k] = 상시.get(k, 0) + (v if k == "즉사" else v * 배)
+        무피 = s["무기피해"] * (1 + 상시.get("공격", 0)) * 악["공격배율"]
+        스커프글 = " × 스커프 1.8~2.2" if 스커프 else ""
+        받는 = 악["피해배율"] * (1 - min(0.9, 상시.get("받는피해", 0))) * (1 - min(0.9, 상시.get("분담", 0)))
+        return (
+            f"[공식] 공격력 = {R.기본_공격력} + 힘×{R.힘당_공격력} · 최대체력 = {R.기본_체력} + 체력×{R.체력당_체력} · "
+            f"회피 = {R.기본_회피 * 100:g}% + 속도×{R.속도당_회피 * 100:g}% - 갑옷 회피 감소 · 치명 = 지능×{R.지능당_치명 * 100:g}% · "
+            f"치명타 ×{R.치명_배율:g} · 강화 1당 무기 피해 +{R.강화당_공격력 * 100:g}% · 능력치 하나 최대 {R.능력치_최대}\n"
+            f"[{c['name']}] Lv.{c['level']} · 힘 {c['힘']} 체력 {c['체력']} 속도 {c['속도']} 지능 {c['지능']} · 남은 포인트 {c['points']}\n"
+            f"장비만: 공격력 {s['공격력']} · 무기 피해 {s['무기피해']:,.0f} ({c['weapon']} +{s['강화']}) · 최대체력 {s['최대체력']} · "
+            f"방어 {s['방어력']} ({c['armor']}) · 회피 {s['회피'] * 100:.1f}% · 치명 {s['치명'] * 100:.1f}%\n"
+            f"악세 {', '.join(낀) or '없음'}: 공격 ×{악['공격배율']:.3g}{스커프글} · 받는 피해 ×{악['피해배율']:.3g} · "
+            f"체력 {악['체력']:+d} · 회피 {악['회피'] * 100:+.0f}%p · 부활 {악['부활']}회\n"
+            + (f"스탠드 상시(Lv.{스탠드['능력lv']}): " + " · ".join(f"{k} {v * 100:.1f}%" for k, v in 상시.items()) + "\n" if 상시 else "")
+            + f"최종(던전 시작 때, 일시 효과·스탠드 악세강화 빼고): 무기 피해 약 {무피:,.0f}{스커프글} · 최대체력 {max(1, s['최대체력'] + 악['체력'])} · "
+            f"회피 {(s['회피'] + 악['회피'] + 상시.get('회피', 0)) * 100:.1f}% · 치명 {(s['치명'] + 상시.get('치명', 0)) * 100:.1f}% · "
+            f"치명타 ×{R.치명_배율 + 상시.get('치명피해', 0):.2f} · 받는 피해 ×{받는:.3f}"
+        )
+    if cat == "item":
+        return "\n".join(f"{n}: {d['price']:,}골드 · {'전투 중 사용' if d['전투'] else '전투 밖'} · {d['설명']}"
+                         for n in _고르기(R.아이템, name) for d in [R.아이템[n]]) or "그런 아이템이 없습니다."
+    return "category 는 weapon / armor / accessory / pet / stand / stat / item 중 하나여야 합니다."
 
 
 def RPG업적(user_id):
@@ -3634,7 +3859,7 @@ def AI프롬프트(user_id, action, text=None):
 }
 RPG_툴 = {
     "rpg_status", "rpg_allocate_stat", "rpg_shop", "rpg_buy", "rpg_sell", "rpg_equip",
-    "rpg_enhance", "rpg_gold_exchange", "rpg_pet", "rpg_achievements",
+    "rpg_enhance", "rpg_gold_exchange", "rpg_pet", "rpg_achievements", "rpg_info",
 }
 
 
@@ -4263,7 +4488,7 @@ def 내_레버리지(user_id):
     레버리지열기_선언, 레버리지청산_선언, 내_레버리지_선언,
     주식주문_선언, 주식일정_선언, 내세금_선언, ETF정보_선언,
     RPG정보_선언, RPG스탯_선언, RPG상점_선언, RPG구매_선언, RPG판매_선언,
-    RPG장착_선언, RPG강화_선언, RPG환전_선언, RPG펫_선언, RPG업적_선언,
+    RPG장착_선언, RPG강화_선언, RPG환전_선언, RPG펫_선언, RPG업적_선언, RPG도감_선언,
     멤버역할_선언,
     음악방송_선언, 노래신청_선언, 노래리스트_선언, 플레이리스트_선언,
     TRPG정보_선언, TRPG시트_선언, TRPG생성_선언, TRPG판정_선언, TRPG공격_선언,
@@ -4283,7 +4508,7 @@ USER_ID_필요 = {
     "leverage_open", "leverage_close", "get_my_leverage",
     "stock_order", "get_my_stock_tax",
     "rpg_status", "rpg_allocate_stat", "rpg_shop", "rpg_buy", "rpg_sell", "rpg_equip",
-    "rpg_enhance", "rpg_gold_exchange", "rpg_pet", "rpg_achievements",
+    "rpg_enhance", "rpg_gold_exchange", "rpg_pet", "rpg_achievements", "rpg_info",
     "get_member_roles",
     "mc_player_info", "mc_player_inventory", "mc_link_account",
     "trpg_sheet", "trpg_create", "trpg_roll", "trpg_attack", "trpg_damage",
@@ -4331,7 +4556,7 @@ USER_ID_필요 = {
     "stock_order": 주식주문, "get_stock_events": 주식일정, "get_my_stock_tax": 내세금, "get_etf_info": ETF정보,
     "rpg_status": RPG정보, "rpg_allocate_stat": RPG스탯, "rpg_shop": RPG상점, "rpg_buy": RPG구매,
     "rpg_sell": RPG판매, "rpg_equip": RPG장착, "rpg_enhance": RPG강화, "rpg_gold_exchange": RPG환전,
-    "rpg_pet": RPG펫, "rpg_achievements": RPG업적,
+    "rpg_pet": RPG펫, "rpg_achievements": RPG업적, "rpg_info": RPG도감,
     "get_member_roles": 멤버역할,
     "music_broadcast": 음악방송, "request_song": AI노래신청, "music_queue": 노래리스트, "playlist": AI플레이리스트,
     "trpg_info": TRPG정보, "trpg_sheet": TRPG시트, "trpg_create": TRPG생성, "trpg_roll": TRPG판정,
