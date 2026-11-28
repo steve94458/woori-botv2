@@ -1028,6 +1028,8 @@ def _스탠드정보(uid):
         "hint": RPG.스탠드디스크_힌트,
         "disks": RPG.스탠드디스크수(uid),
         "changeCost": RPG.스탠드_변경비용,
+        "stands": [{"no": x["번호"], "name": x["이름"], "level": x["레벨"], "abilities": len(x["능력들"]), "active": x["id"] == (st or {}).get("id")}
+                   for x in RPG.내스탠드들(uid)],
         "stand": ({"name": st["이름"], "level": st["레벨"], "exp": st["경험"], "next": st["다음"],
                    "slots": RPG.스탠드능력칸(st["레벨"]), "abilities": [{"name": a["이름"], "desc": RPG.스탠드능력문구(a, st["레벨"])} for a in st["능력들"]]}
                   if st else None),
@@ -1119,13 +1121,17 @@ async def RPG펫(action: str, request: Request):
 
 @app.post("/api/rpg/stand")
 async def RPG스탠드(request: Request):
-    """스탠드 요청. kind = create(name, text) / ability(text) / change(text, target=능력 번호, 골드 RPG.스탠드_변경비용)"""
+    """스탠드 요청. kind = create(name, text) / ability(text) / change(text, target=능력 번호, 골드 RPG.스탠드_변경비용)
+    / switch(target=스탠드 번호 — 낄 스탠드 바꾸기)"""
     uid, 몸 = await _rpg요청(request)
     with _db락:
         if 몸.get("kind") == "create":
             성공, r = RPG.스탠드요청(uid, "생성", str(몸.get("text", "")), str(몸.get("name", "")))
         elif 몸.get("kind") == "ability":
             성공, r = RPG.스탠드요청(uid, "능력", str(몸.get("text", "")))
+        elif 몸.get("kind") == "switch":
+            성공, r = RPG.스탠드바꾸기(uid, str(몸.get("target", "")))
+            return _결과(성공, {"name": r["이름"]} if 성공 else r)
         elif 몸.get("kind") == "change":
             성공, r = RPG.스탠드요청(uid, "변경", str(몸.get("text", "")), 대상=몸.get("target"))
         else:

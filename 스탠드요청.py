@@ -51,9 +51,13 @@ def 목록():
         print("대기 중인 요청 없음")
     for r in 대기:
         c = RPG.캐릭터(r["user_id"]) or {}
-        st = RPG.내스탠드(r["user_id"])
+        st = (RPG.스탠드(r["스탠드id"]) if r["스탠드id"] else None) if r["종류"] != "생성" else None
+        if r["종류"] != "생성" and st is None:
+            st = RPG.내스탠드(r["user_id"])
+        가진 = RPG.내스탠드들(r["user_id"])
         print(f"#{r['id']} [{r['종류']}] {c.get('name')} ({r['user_id']}) 최고층 {c.get('best')} · 스탠드 '{r['이름']}'"
-              + (f" Lv.{st['레벨']} 능력 {len(st['능력들'])}개" if st else ""))
+              + (f" Lv.{st['레벨']} 능력 {len(st['능력들'])}개" if st else "")
+              + (f" · 가진 스탠드 {len(가진)}개: " + ", ".join(f"{x['이름']} Lv.{x['레벨']}" for x in 가진) if 가진 else ""))
         print(f"   요청: {r['내용']}")
         if st:
             for a in st["능력들"]:
@@ -70,7 +74,7 @@ def main():
         ok, 글, r = RPG.스탠드처리(int(a[1]), 능력=능력)
         print(글)
         if ok:
-            st = RPG.내스탠드(r["user_id"])
+            st = (RPG.스탠드(r["스탠드id"]) if r.get("스탠드id") else None) or RPG.내스탠드(r["user_id"])
             if r["종류"] == "변경":
                 바뀜 = 능력 if isinstance(능력, list) else [능력]
                 DM(r["user_id"], f"👤 스탠드 **{st['이름']}** 능력이 바뀌었어요! (요청 #{r['id']})\n"
@@ -78,7 +82,9 @@ def main():
                    + "\n다음 던전부터 들어가요. `!RPG 스탠드` 로 확인!")
                 return
             DM(r["user_id"], f"👤 스탠드 **{st['이름']}**" + (" 완성!" if r["종류"] == "생성" else "에 새 능력이 생겼어요!")
-               + f"\n「{능력['이름']}」 {능력.get('설명', '')}\n`!RPG 스탠드` 로 확인 · `!RPG 펫 장착 스탠드` 로 데리고 다녀요.")
+               + f"\n「{능력['이름']}」 {능력.get('설명', '')}\n`!RPG 스탠드` 로 확인 · "
+               + ("`!RPG 펫 장착 스탠드` 로 데리고 다녀요." if r["종류"] != "생성" or r.get("처음")
+                  else f"`!RPG 스탠드 바꾸기 {next((x['번호'] for x in RPG.내스탠드들(r['user_id']) if x['id'] == st['id']), '')}` 로 끼면 데리고 다녀요."))
         return
     if a[0] == "거절" and len(a) >= 3:
         ok, 글, r = RPG.스탠드처리(int(a[1]), 거절=" ".join(a[2:]))

@@ -393,9 +393,12 @@ function standCard(x) {
       <span class="muted">${st ? (st.next ? `경험치 ${n(st.exp)} / ${n(st.next)}` : "최대 레벨") : `💿 디스크 ${x.disks}장`}</span></div>
     ${st ? `<div class="d">${st.abilities.map((a, i) => `${i + 1}. 「${esc(a.name)}」 ${esc(a.desc)}`).join("<br>") || "능력 없음"}<br>
       <span class="muted">능력 ${st.abilities.length}/${st.slots}칸 · Lv.20마다 1칸 더 (최대 6칸)</span></div>` : ""}
+    ${(x.stands || []).length > 1 ? `<div class="d">🗂️ 가진 스탠드<br>${x.stands.map((s) => `${s.no}. ${esc(s.name)} Lv.${s.level} · 능력 ${s.abilities}개 `
+      + (s.active ? `<span class="muted">← 끼는 중</span>` : `<button class="btn small" data-stand="switch" data-no="${s.no}">끼기</button>`)).join("<br>")}</div>` : ""}
+    ${st && x.disks ? `<div class="muted">💿 디스크 ${x.disks}장 — 새 스탠드를 하나 더 만들 수 있어요</div>` : ""}
     ${대기}${지난}
     <div class="btns">
-      ${!st && x.disks && !x.pending.length ? `<button class="btn small primary" data-stand="create">💿 스탠드 만들기</button>` : ""}
+      ${x.disks && !x.pending.some((r) => r.kind === "생성") ? `<button class="btn small primary" data-stand="create">💿 ${st ? "새 스탠드 만들기" : "스탠드 만들기"}</button>` : ""}
       ${st && 남은칸 > 0 ? `<button class="btn small primary" data-stand="ability">➕ 새 능력 요청</button>` : ""}
       ${st && !x.pending.some((r) => r.kind === "변경") ? `<button class="btn small" data-stand="change">🔁 능력 변경 (${(x.changeCost || 0).toLocaleString()} 골드)</button>` : ""}
     </div>
@@ -404,6 +407,14 @@ function standCard(x) {
 }
 $("#pets").addEventListener("click", (e) => {
   const sb = e.target.closest("button[data-stand]");
+  if (sb && sb.dataset.stand === "switch") {
+    run(async () => {
+      const r = await api("api/rpg/stand", { kind: "switch", target: sb.dataset.no });
+      toast(`👤 이제 ${r.result.name}을(를) 끼고 다녀요`);
+      await load();
+    });
+    return;
+  }
   if (sb) {
     let 이름 = "", 대상 = null;
     if (sb.dataset.stand === "create") {

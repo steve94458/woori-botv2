@@ -2628,13 +2628,14 @@ def _악세수치(R, n):
     return " · ".join(줄) or "능력 없음"
 
 
-def _스탠드상세(R, uid):
-    st = R.내스탠드(uid)
+def _스탠드상세(R, uid, st=None):
+    st = st or R.내스탠드(uid)
     if st is None:
         return None
     c = R.캐릭터(uid) or {}
     lv = st["레벨"]
-    줄 = [f"👤 스탠드 '{st['이름']}' (주인 {c.get('name', '?')}) Lv.{lv}/{R.스탠드_최대레벨}"
+    가진 = R.내스탠드들(uid)
+    줄 = [f"👤 스탠드 '{st['이름']}' (주인 {c.get('name', '?')}{' · 지금 끼는 중' if st.get('낌') else ' · 안 끼고 있음'}) Lv.{lv}/{R.스탠드_최대레벨}"
          + (f" · 경험치 {st['경험']:,}/{st['다음']:,}" if st["다음"] else "")
          + f" · 레벨배율 ×{R.스탠드_레벨배율(lv):.2f} (능력 수치에 곱함, 턴·횟수·즉사 확률은 안 곱함)"
          + f" · 능력 {len(st['능력들'])}/{R.스탠드능력칸(lv)}칸"]
@@ -2643,6 +2644,8 @@ def _스탠드상세(R, uid):
         if a.get("효과") and ("쿨" in a or "쿨레벨" in a):
             원["지금_쿨"] = R.스탠드쿨(a, lv)
         줄.append(f"- 「{a['이름']}」 {R.스탠드능력문구(a, lv)}\n  원본 수치: {json.dumps(원, ensure_ascii=False)}")
+    if len(가진) > 1:
+        줄.append("이 주인의 스탠드: " + ", ".join(f"{x['번호']}. '{x['이름']}' Lv.{x['레벨']}" + (" (끼는 중)" if x["낌"] else "") for x in 가진))
     줄.append("(원본 수치 읽는 법: 확률=매 턴 발동 확률, 쿨=발동 뒤 쉬는 턴, 조건.층턴=층마다 그 턴에 한 번, 효과.늦게=N턴 뒤, "
              "상시=늘 켜짐(×레벨배율), 즉사=공격 맞을 때 확률(보스는 무기피해×3×레벨배율))")
     return "\n".join(줄)
@@ -2714,11 +2717,15 @@ def RPG도감(user_id, category, name=None, user=None):
         if 대상 is None:
             return f"'{user}' 유저를 찾지 못했습니다."
         if user:
+            R.cursor.execute("SELECT id, user_id FROM rpg_stands WHERE LOWER(name) = LOWER(?)", (str(user).strip(),))
+            같은이름 = R.cursor.fetchall()
+            if len(같은이름) == 1:                    # 스탠드 이름으로 물으면 (안 끼고 있는 것도) 그 스탠드
+                return _스탠드상세(R, str(같은이름[0][1]), R.스탠드(같은이름[0][0]))
             return _스탠드상세(R, 대상) or "그 유저는 스탠드가 없습니다."
-        R.cursor.execute("SELECT s.user_id, s.name, s.level, s.abilities, c.name FROM rpg_stands s "
+        R.cursor.execute("SELECT s.user_id, s.name, s.level, s.abilities, c.name, s.active FROM rpg_stands s "
                          "LEFT JOIN rpg_characters c ON c.user_id = s.user_id ORDER BY s.level DESC")
-        목록 = [f"- '{n}' Lv.{lv} (주인 {cn or '?'}) 능력: " + ", ".join(a.get("이름", "?") for a in json.loads(ab or "[]"))
-              for u, n, lv, ab, cn in R.cursor.fetchall()]
+        목록 = [f"- '{n}' Lv.{lv} (주인 {cn or '?'}{', 끼는 중' if act else ''}) 능력: " + ", ".join(a.get("이름", "?") for a in json.loads(ab or "[]"))
+              for u, n, lv, ab, cn, act in R.cursor.fetchall()]
         내것 = _스탠드상세(R, user_id)
         return ((내것 + "\n\n") if 내것 else "내 스탠드는 없습니다.\n\n") + "전체 스탠드 (자세히 보려면 user 에 스탠드 이름):\n" + ("\n".join(목록) or "없음")
     if cat == "stat":

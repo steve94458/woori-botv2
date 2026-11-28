@@ -616,7 +616,7 @@ def 간식드롭(층):
 }
 for _n in [n for n in 악세서리 if n.endswith("의 황금빛 정신")]:
     악세서리[_n]["설명"] += " · 6개를 다 모아 2012층에 가면 무언가가 일어난다"
-스탠드디스크_힌트 = "🚀 황금빛 정신 6개를 모두 가진 채 2012층에 가면, 천국을 꿈꾸는 신부가 기다린다"
+스탠드디스크_힌트 = "🚀 황금빛 정신 6개를 모두 가진 채 2012층에 가면, 천국을 꿈꾸는 신부가 기다린다 (쓰러뜨리면 정신은 흩어지고, 다시 모으면 또 만난다)"
 황금빛정신 = [n for n in 악세서리 if n.endswith("의 황금빛 정신")]
 
 
@@ -850,12 +850,32 @@ try:
 except sqlite3.OperationalError:
     pass
 cursor.execute("CREATE TABLE IF NOT EXISTS rpg_achievements (user_id TEXT, name TEXT, at TEXT, PRIMARY KEY (user_id, name))")
-# 스탠드: 1인 1개. abilities = 능력 JSON 목록 (스탠드능력검사 형식)
-cursor.execute("CREATE TABLE IF NOT EXISTS rpg_stands (user_id TEXT PRIMARY KEY, name TEXT, level INTEGER DEFAULT 1, "
-               "exp INTEGER DEFAULT 0, abilities TEXT DEFAULT '[]', created_at TEXT)")
+# 스탠드: 한 사람이 여러 개(푸치를 잡을 때마다 디스크 1장), 그중 active = 1 인 것 하나를 낀다.
+#   abilities = 능력 JSON 목록 (스탠드능력검사 형식). 2026-11-28 전엔 user_id 가 PRIMARY KEY(1인 1개)라 아래에서 옮긴다
+_스탠드표 = ("CREATE TABLE IF NOT EXISTS rpg_stands (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, name TEXT, "
+           "level INTEGER DEFAULT 1, exp INTEGER DEFAULT 0, abilities TEXT DEFAULT '[]', created_at TEXT, active INTEGER DEFAULT 0)")
+cursor.execute(_스탠드표)
+if "id" not in [r[1] for r in cursor.execute("PRAGMA table_info(rpg_stands)").fetchall()]:
+    conn.commit()
+    try:
+        cursor.execute("BEGIN IMMEDIATE")
+        if "id" not in [r[1] for r in cursor.execute("PRAGMA table_info(rpg_stands)").fetchall()]:   # 다른 프로세스가 먼저 옮겼을 수도
+            cursor.execute("ALTER TABLE rpg_stands RENAME TO rpg_stands_old")
+            cursor.execute(_스탠드표)
+            cursor.execute("INSERT INTO rpg_stands (user_id, name, level, exp, abilities, created_at, active) "
+                           "SELECT user_id, name, level, exp, abilities, created_at, 1 FROM rpg_stands_old")
+            cursor.execute("DROP TABLE rpg_stands_old")
+        conn.commit()
+    except sqlite3.OperationalError:
+        conn.rollback()
+cursor.execute("CREATE INDEX IF NOT EXISTS rpg_stands_user ON rpg_stands (user_id)")
 # 스탠드 요청: kind = 생성/능력, status = 대기/완료/거절. 관리자가 클로드 코드로 처리한다 (스탠드요청.py)
 cursor.execute("CREATE TABLE IF NOT EXISTS rpg_stand_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, kind TEXT, "
                "stand_name TEXT, request TEXT, status TEXT DEFAULT '대기', note TEXT, created_at TEXT, done_at TEXT)")
+try:
+    cursor.execute("ALTER TABLE rpg_stand_requests ADD COLUMN stand_id INTEGER")      # 능력·변경 요청이 어느 스탠드 것인지
+except sqlite3.OperationalError:
+    pass
 # 레이드: 주(월요일 날짜)마다 보스 하나. hp·max_hp·damage 는 점수 단위 (REAL)
 cursor.execute(
     "CREATE TABLE IF NOT EXISTS rpg_raids (week TEXT PRIMARY KEY, boss INTEGER, max_hp REAL, hp REAL, "
@@ -1879,17 +1899,55 @@ def _펫찾기(이름, user_id=None):
 #     효과 없이 상시만 있는 능력도 된다. 설명엔 Lv.1/Lv.100 수치를 같이 적는다 (화면에 지금 수치가 붙음)
 # ============================================================
 
-def 내스탠드(user_id):
-    cursor.execute("SELECT name, level, exp, abilities, created_at FROM rpg_stands WHERE user_id = ?", (user_id,))
-    r = cursor.fetchone()
-    if r is None:
-        return None
+_스탠드열 = "id, user_id, name, level, exp, abilities, created_at, active"
+
+
+def _스탠드행(r):
     try:
-        능력 = json.loads(r[3] or "[]")
+        능력 = json.loads(r[5] or "[]")
     except ValueError:
         능력 = []
-    return {"이름": r[0], "레벨": r[1], "경험": r[2], "능력들": 능력, "만든때": r[4],
-            "다음": 스탠드_필요경험치(r[1]) if r[1] < 스탠드_최대레벨 else None}
+    return {"id": r[0], "주인": r[1], "이름": r[2], "레벨": r[3], "경험": r[4], "능력들": 능력, "만든때": r[6], "낌": bool(r[7]),
+            "다음": 스탠드_필요경험치(r[3]) if r[3] < 스탠드_최대레벨 else None}
+
+
+def 내스탠드(user_id):
+    """지금 낀 스탠드 (없으면 None). 낀 게 없는데 스탠드가 있으면 마지막 것"""
+    cursor.execute(f"SELECT {_스탠드열} FROM rpg_stands WHERE user_id = ? ORDER BY active DESC, id DESC LIMIT 1", (user_id,))
+    r = cursor.fetchone()
+    return _스탠드행(r) if r else None
+
+
+def 내스탠드들(user_id):
+    """가진 스탠드 전부 (만든 순서, '번호' 1부터)"""
+    cursor.execute(f"SELECT {_스탠드열} FROM rpg_stands WHERE user_id = ? ORDER BY id", (user_id,))
+    목록 = [_스탠드행(r) for r in cursor.fetchall()]
+    for i, st in enumerate(목록):
+        st["번호"] = i + 1
+    return 목록
+
+
+def 스탠드(stand_id):
+    cursor.execute(f"SELECT {_스탠드열} FROM rpg_stands WHERE id = ?", (stand_id,))
+    r = cursor.fetchone()
+    return _스탠드행(r) if r else None
+
+
+def 스탠드바꾸기(user_id, 대상):
+    """낄 스탠드를 번호(1부터)나 이름으로 고른다. 반환 (성공, 문구 또는 스탠드)"""
+    if 전투중(user_id):
+        return False, "전투 중에는 스탠드를 바꿀 수 없어요."
+    목록 = 내스탠드들(user_id)
+    if not 목록:
+        return False, "스탠드가 아직 없어요."
+    t = str(대상 or "").strip()
+    st = (목록[int(t) - 1] if t.isdigit() and 1 <= int(t) <= len(목록)
+          else next((x for x in 목록 if x["이름"] == t), None))
+    if st is None:
+        return False, f"'{t}' 스탠드가 없어요. 번호는 `!RPG 스탠드` 에서 확인해요."
+    cursor.execute("UPDATE rpg_stands SET active = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE user_id = ?", (st["id"], user_id))
+    conn.commit()
+    return True, st
 
 
 def 스탠드디스크수(user_id):
@@ -1902,9 +1960,10 @@ def 스탠드요청목록(user_id=None, 상태="대기"):
         조건.append("user_id = ?"); 값.append(user_id)
     if 상태:
         조건.append("status = ?"); 값.append(상태)
-    cursor.execute("SELECT id, user_id, kind, stand_name, request, status, note, created_at, done_at FROM rpg_stand_requests"
+    cursor.execute("SELECT id, user_id, kind, stand_name, request, status, note, created_at, done_at, stand_id FROM rpg_stand_requests"
                    + (" WHERE " + " AND ".join(조건) if 조건 else "") + " ORDER BY id", 값)
-    return [dict(zip(("id", "user_id", "종류", "이름", "내용", "상태", "메모", "요청때", "처리때"), r)) for r in cursor.fetchall()]
+    return [dict(zip(("id", "user_id", "종류", "이름", "내용", "상태", "메모", "요청때", "처리때", "스탠드id"), r))
+            for r in cursor.fetchall()]
 
 
 def 스탠드능력검사(a):
@@ -2007,8 +2066,6 @@ def 스탠드요청(user_id, 종류, 내용, 이름=None, 대상=None):
             return False, f"스탠드 이름은 {최소}~{최대}자예요."
         if any(ch in 이름 for ch in "@#`\n\r*_~|<>"):
             return False, "스탠드 이름에 특수문자(@ # ` * _ ~ | < >)는 쓸 수 없어요."
-        if st:
-            return False, f"이미 스탠드 **{st['이름']}**이(가) 있어요."
         if any(r["종류"] == "생성" for r in 대기):
             return False, "이미 만들고 있는 스탠드가 있어요. 완성될 때까지 기다려 주세요."
         cursor.execute("UPDATE rpg_counters SET value = value - 1 WHERE user_id = ? AND key = '스탠드디스크' AND value >= 1",
@@ -2019,7 +2076,8 @@ def 스탠드요청(user_id, 종류, 내용, 이름=None, 대상=None):
     elif 종류 == "능력":
         if st is None:
             return False, "스탠드가 아직 없어요."
-        남은칸 = 스탠드능력칸(st["레벨"]) - len(st["능력들"]) - sum(1 for r in 대기 if r["종류"] == "능력")
+        남은칸 = 스탠드능력칸(st["레벨"]) - len(st["능력들"]) - sum(1 for r in 대기 if r["종류"] == "능력"
+                                                              and r["스탠드id"] in (None, st["id"]))
         if 남은칸 <= 0:
             다음 = (st["레벨"] // 스탠드_능력간격 + 1) * 스탠드_능력간격
             return False, (f"지금은 새 능력을 만들 수 없어요. (Lv.{다음}에 한 칸 더)" if 다음 <= 스탠드_최대레벨
@@ -2046,8 +2104,10 @@ def 스탠드요청(user_id, 종류, 내용, 이름=None, 대상=None):
         이름 = st["이름"]
     else:
         return False, "생성 · 능력 · 변경"
-    cursor.execute("INSERT INTO rpg_stand_requests (user_id, kind, stand_name, request, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                   (user_id, 종류, 이름, 내용, str(스탠드_변경비용) if 종류 == "변경" else None, _지금()))
+    cursor.execute("INSERT INTO rpg_stand_requests (user_id, kind, stand_name, request, note, created_at, stand_id) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                   (user_id, 종류, 이름, 내용, str(스탠드_변경비용) if 종류 == "변경" else None, _지금(),
+                    st["id"] if 종류 != "생성" and st else None))
     번호 = cursor.lastrowid
     conn.commit()
     print(f"[{datetime.now()}] RPG 스탠드 요청 #{번호} {user_id} {종류} {이름}: {내용}")
@@ -2076,7 +2136,7 @@ def 스탠드처리(요청id, 능력=None, 거절=None):
         if 오류:
             return False, 오류, r
     if r["종류"] == "변경":
-        st = 내스탠드(uid)
+        st = (스탠드(r["스탠드id"]) if r["스탠드id"] else None) or 내스탠드(uid)
         m = re.match(r"\[#(\d+) ", r["내용"])
         if isinstance(능력, list):
             새 = 능력
@@ -2087,20 +2147,22 @@ def 스탠드처리(요청id, 능력=None, 거절=None):
             새[int(m.group(1)) - 1] = 능력
         else:
             return False, "전체 변경 요청이라 능력 목록(list)을 줘야 해요", r
-        cursor.execute("UPDATE rpg_stands SET abilities = ? WHERE user_id = ?", (json.dumps(새, ensure_ascii=False), uid))
+        cursor.execute("UPDATE rpg_stands SET abilities = ? WHERE id = ?", (json.dumps(새, ensure_ascii=False), st["id"]))
         이름 = 능력["이름"] if isinstance(능력, dict) else "전체"
         cursor.execute("UPDATE rpg_stand_requests SET status = '완료', note = ?, done_at = ? WHERE id = ?", (이름, _지금(), 요청id))
         conn.commit()
         return True, "변경", r
     if r["종류"] == "생성":
-        cursor.execute("INSERT INTO rpg_stands (user_id, name, abilities, created_at) VALUES (?, ?, ?, ?)",
-                       (uid, r["이름"], json.dumps([능력], ensure_ascii=False), _지금()))
+        처음 = 내스탠드(uid) is None
+        cursor.execute("INSERT INTO rpg_stands (user_id, name, abilities, created_at, active) VALUES (?, ?, ?, ?, ?)",
+                       (uid, r["이름"], json.dumps([능력], ensure_ascii=False), _지금(), 1 if 처음 else 0))
+        r["스탠드id"], r["처음"] = cursor.lastrowid, 처음
         cursor.execute("INSERT OR IGNORE INTO rpg_pets (user_id, pet) VALUES (?, '스탠드')", (uid,))
         cursor.execute("UPDATE rpg_characters SET pet = '스탠드' WHERE user_id = ? AND pet IS NULL", (uid,))
     else:
-        st = 내스탠드(uid)
-        cursor.execute("UPDATE rpg_stands SET abilities = ? WHERE user_id = ?",
-                       (json.dumps(st["능력들"] + [능력], ensure_ascii=False), uid))
+        st = (스탠드(r["스탠드id"]) if r["스탠드id"] else None) or 내스탠드(uid)
+        cursor.execute("UPDATE rpg_stands SET abilities = ? WHERE id = ?",
+                       (json.dumps(st["능력들"] + [능력], ensure_ascii=False), st["id"]))
     cursor.execute("UPDATE rpg_stand_requests SET status = '완료', note = ?, done_at = ? WHERE id = ?",
                    (능력["이름"], _지금(), 요청id))
     conn.commit()
@@ -2120,7 +2182,7 @@ def 스탠드경험치(user_id, 양):
         오름 += 1
     if 레벨 >= 스탠드_최대레벨:
         경험 = 0
-    cursor.execute("UPDATE rpg_stands SET level = ?, exp = ? WHERE user_id = ?", (레벨, 경험, user_id))
+    cursor.execute("UPDATE rpg_stands SET level = ?, exp = ? WHERE id = ?", (레벨, 경험, st["id"]))
     return 레벨, 오름, 스탠드능력칸(레벨) > 스탠드능력칸(st["레벨"])
 
 
@@ -4480,13 +4542,14 @@ class 전투:
             새것 = []
             for 보상 in 보상들:
                 if 보상 == 스탠드디스크:
-                    if 내스탠드(self.uid) or 스탠드디스크수(self.uid) > 0 or any(
-                            r["종류"] == "생성" for r in 스탠드요청목록(self.uid)):
-                        self.기록(f"🎁 💿 {보상}… 이미 스탠드를 가지고 있다.")
-                        continue
                     카운트(self.uid, "스탠드디스크", 1)
-                    self.기록(f"🎁 💿 **{보상}**을(를) 얻었다! `!RPG 스탠드` 로 나만의 스탠드를 만들 수 있다")
+                    self.기록(f"🎁 💿 **{보상}**을(를) 얻었다! `!RPG 스탠드 만들기` 로 " + ("새 스탠드를 하나 더" if 내스탠드(self.uid)
+                                                                              else "나만의 스탠드를") + " 만들 수 있다")
                     새것.append(보상)
+                    cursor.execute(f"DELETE FROM rpg_accessories WHERE user_id = ? AND name IN ({','.join('?' * len(황금빛정신))})",
+                                   (self.uid, *황금빛정신))
+                    if cursor.rowcount:
+                        self.기록("🌅 품속의 황금빛 정신들이 빛이 되어 흩어졌다… 다시 모으면 그를 또 만날 수 있다")
                 elif 악세지급(self.uid, 보상):
                     self.기록(f"🎁 {악세서리[보상]['이모지']} **{보상}**을(를) 얻었다!")
                     새것.append(보상)
@@ -6505,17 +6568,23 @@ def 스탠드화면(user_id):
         칸 = 스탠드능력칸(st["레벨"])
         embed.description = (f"경험치 {다음} · 능력 {len(st['능력들'])}/{칸}칸 "
                              f"(Lv.{스탠드_능력간격}마다 1칸, 최대 {스탠드능력칸(스탠드_최대레벨)}칸) · 능력 배율 ×{스탠드_레벨배율(st['레벨']):.2f}\n"
-                             "간식을 먹지 않아요. 펫으로 데리고 싸우면 전투 경험치로 자라요.")
+                             "간식을 먹지 않아요. 펫으로 데리고 싸우면 전투 경험치로 자라요. 끼고 있는 스탠드만 자라요.")
         for i, a in enumerate(st["능력들"]):
             embed.add_field(name=f"{i + 1}. 「{a['이름']}」", value=스탠드능력문구(a, st["레벨"])[:1024], inline=False)
-    else:
-        q = 스탠드디스크수(user_id)
-        embed.description = (f"💿 {스탠드디스크} {q}장\n" + ("`!RPG 스탠드 만들기 [이름] | [능력 설명]` 으로 만들어요."
-                             if q else f"💡 {스탠드디스크_힌트}"))
+        목록 = 내스탠드들(user_id)
+        if len(목록) > 1:
+            embed.add_field(name="🗂️ 가진 스탠드 (`!RPG 스탠드 바꾸기 [번호]`)",
+                            value="\n".join(f"{x['번호']}. {x['이름']} Lv.{x['레벨']} · 능력 {len(x['능력들'])}개"
+                                            + (" ← 끼는 중" if x["id"] == st["id"] else "") for x in 목록)[:1024], inline=False)
+    q = 스탠드디스크수(user_id)
+    if q or not st:
+        embed.add_field(name=f"💿 {스탠드디스크} {q}장",
+                        value=("`!RPG 스탠드 만들기 [이름] | [능력 설명]` 으로 " + ("새 스탠드를 하나 더 " if st else "") + "만들어요."
+                               if q else f"💡 {스탠드디스크_힌트}"), inline=False)
     if 대기:
         embed.add_field(name="⏳ 만드는 중",
                         value="\n".join(f"#{r['id']} {r['종류']} — {r['내용'][:80]}" for r in 대기)[:1024], inline=False)
-    embed.set_footer(text="요청은 관리자가 확인해서 밸런스에 맞게 만들어 줘요 · !RPG 스탠드 능력 [설명] · "
+    embed.set_footer(text="요청은 관리자가 확인해서 밸런스에 맞게 만들어 줘요 · 푸치를 잡을 때마다 디스크 1장 · !RPG 스탠드 능력 [설명] · "
                           f"!RPG 스탠드 변경 [번호] | [내용] ({스탠드_변경비용:,} 골드) · !RPG 펫 장착 스탠드")
     return embed
 
@@ -6848,6 +6917,10 @@ async def _명령어(ctx, 용도=None, 인자=()):
         if 하위 in (None, "정보", "목록"):
             await ctx.reply(embed=스탠드화면(uid))
             return
+        if 하위 in ("바꾸기", "교체", "선택", "끼기"):
+            성공, r = 스탠드바꾸기(uid, " ".join(인자[1:]))
+            await ctx.reply(f"👤 이제 **{r['이름']}** (Lv.{r['레벨']})을(를) 끼고 다녀요." if 성공 else r)
+            return
         if 하위 in ("만들기", "생성"):
             글 = " ".join(인자[1:])
             if "|" not in 글:
@@ -6878,7 +6951,7 @@ async def _명령어(ctx, 용도=None, 인자=()):
             성공, r = 펫장착(uid, "스탠드")
             await ctx.reply("👤 스탠드를 데리고 다녀요." if 성공 else r)
             return
-        await ctx.reply("사용법: `!RPG 스탠드` · `만들기 [이름] | [능력]` · `능력 [설명]` · "
+        await ctx.reply("사용법: `!RPG 스탠드` · `만들기 [이름] | [능력]` · `능력 [설명]` · `바꾸기 [번호]` · "
                         f"`변경 [능력 번호] | [내용]`({스탠드_변경비용:,} 골드) · `장착`")
         return
 
