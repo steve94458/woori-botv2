@@ -414,8 +414,8 @@ $("#pets").addEventListener("click", (e) => {
       대상 = prompt("바꿀 능력 번호 (위 목록 순서, 1부터) — 비우면 여러 능력을 한꺼번에 바꾸는 요청");
       if (대상 === null) return;
     }
-    const 내용 = prompt(sb.dataset.stand === "create" ? "어떤 능력이면 좋겠어요? (300자까지)"
-      : sb.dataset.stand === "change" ? "어떻게 바꿀지 적어 주세요 (4000자까지, 골드는 거절되면 돌려받아요)" : "새 능력을 설명해 주세요 (300자까지)");
+    const 내용 = prompt(sb.dataset.stand === "create" ? "어떤 능력이면 좋겠어요? (4000자까지)"
+      : sb.dataset.stand === "change" ? "어떻게 바꿀지 적어 주세요 (4000자까지, 골드는 거절되면 돌려받아요)" : "새 능력을 설명해 주세요 (4000자까지)");
     if (!내용) return;
     run(async () => {
       const r = await api("api/rpg/stand", { kind: sb.dataset.stand, name: 이름, text: 내용, target: 대상 });
