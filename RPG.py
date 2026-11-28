@@ -1850,6 +1850,7 @@ def _펫찾기(이름, user_id=None):
 #   효과 공통 "늦게": N — 바로 안 쓰고 N턴 뒤(같은 층일 때만)에 쓴다 (`전투.스탠드예약`)
 #   상태의 "중첩": N (출혈·화상만, 1~5) — 그 도트 피해 × N (`e["도트세기"]`)
 #   "쿨레벨": {"80": 3, "100": 2} — 그 레벨부터 쿨이 바뀐다 (`스탠드쿨`)
+#   "연속공격": {"2": 0.2, "3": 0.1} — 내 공격 뒤 그 확률로 같은 공격을 그 횟수가 될 때까지 더 한다 (확률은 레벨배율 안 곱함, `_스탠드연타`)
 #   "시간무시": true — 적의 시간 능력 무시: 적 산데비스탄 회피·더 월드 정지가 안 먹는다 (메이드 인 헤븐 가속은 그대로)
 #   조건 {"층턴": N} — 층(싸움)마다 N번째 턴에 한 번만 (확률 대신. 펫이 쓰러져 있었으면 그 뒤 처음 행동 때)
 #   상시 {"공격": 0.15, "치명": 0.1, "치명피해": 0.1} (선택) — 스탠드를 데리고 있으면 늘 공격력 ×(1+공격×배율), 치명 +치명×배율,
@@ -1896,7 +1897,7 @@ def 스탠드능력검사(a):
     """능력 dict 형식 확인. 문제 있으면 이유 문자열, 괜찮으면 None"""
     상시 = a.get("상시") if isinstance(a, dict) else None
     if not isinstance(a, dict) or not a.get("이름") or not isinstance(a.get("효과", []), list) \
-            or not (a.get("효과") or 상시 or a.get("부활충전") or a.get("악세강화") or a.get("시간무시")):
+            or not (a.get("효과") or 상시 or a.get("부활충전") or a.get("악세강화") or a.get("시간무시") or a.get("연속공격")):
         return "이름과 효과 목록(또는 상시·부활충전)이 필요해요"
     if "부활충전" in a and not (isinstance(a["부활충전"], int) and 1 <= a["부활충전"] <= 3):
         return "부활충전은 1~3 정수"
@@ -1907,6 +1908,11 @@ def 스탠드능력검사(a):
     if "쿨레벨" in a and not (isinstance(a["쿨레벨"], dict) and all(str(k).isdigit() and isinstance(v, int) and v >= 0
                                                                 for k, v in a["쿨레벨"].items())):
         return "쿨레벨은 {\"레벨\": 쿨} (쿨은 0 이상 정수)"
+    if "연속공격" in a and not (isinstance(a["연속공격"], dict) and a["연속공격"]
+                               and all(str(k).isdigit() and 2 <= int(k) <= 5 and isinstance(v, (int, float)) and v > 0
+                                       for k, v in a["연속공격"].items())
+                               and sum(a["연속공격"].values()) <= 1):
+        return "연속공격은 {\"횟수(2~5)\": 확률} (확률 합 1 이하)"
     if "충전최대" in a and not (isinstance(a["충전최대"], int) and a["충전최대"] >= 1):
         return "충전최대는 1 이상 정수"
     if 상시 is not None:
@@ -3005,6 +3011,7 @@ class 전투:
                 맞을적 = 살아[대상] if 0 <= 대상 < len(살아) else (살아[0] if 살아 else None)
             if not self._공격(대상):
                 return False               # 공격 불가 (탄약 없음 등) — 턴을 쓰지 않는다
+            self._스탠드연타(대상)
             if 맞을적 is not None:
                 self._로그추가타(맞을적)
         elif 종류 == "아이템":
@@ -3439,6 +3446,28 @@ class 전투:
             return
         self.효과["기절"] = max(self.효과.get("기절", 0), 턴 + 1)
         self.기록(f"   ↳ ⏸️ {이유} — {턴}턴 동안 움직일 수 없다")
+
+    def _스탠드연타(self, 대상):
+        """스탠드 연속공격: 내 공격 뒤 확률로 같은 공격을 더 한다 (탄약·쿨은 그대로 쓴다)"""
+        p = self.펫
+        if not p or p["이름"] != "스탠드":
+            return
+        a = next((x for x in p.get("능력들") or [] if x.get("연속공격")), None)
+        if not a:
+            return
+        r, n = random.random(), 1
+        for 횟수, 확률 in sorted(((int(k), float(v)) for k, v in a["연속공격"].items()), reverse=True):
+            if r < 확률:
+                n = 횟수
+                break
+            r -= 확률
+        if n <= 1 or not self.살아있는적():
+            return
+        self.기록(f"👤 {p['별명']}: 「{a['이름']}」 — ⏱️ {n}연속 공격!")
+        for _ in range(n - 1):
+            if not self.살아있는적() or not self._공격(대상):
+                break
+        self._보류출력()
 
     def _따라적기(self, *행동):
         """적 턴에 지금 움직이는 적이 한 행동을 적어 둔다 (스탠드 따라하기)"""
