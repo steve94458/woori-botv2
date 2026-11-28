@@ -465,6 +465,7 @@ def 일일구성(날=None):
 스탠드_능력간격 = 20             # Lv.20·40·60·80·100 마다 능력 1개 더 (처음 1개 → 최대 6개)
 스탠드_이름길이 = (1, 20)
 스탠드_요청최대 = 300             # 능력 설명 글자 수
+스탠드_변경비용 = 5_000_000       # 있는 능력을 바꾸는 요청 (RPG 골드, 요청할 때 내고 거절되면 돌려받음)
 스탠드_능력종류 = ("피해", "상태", "회복", "방패", "회피", "해제", "강화", "보호", "반사", "아공간", "방패파괴", "회피즉사", "랜덤", "남의능력", "따라하기", "소환", "감금")
 스탠드_상시종류 = ("공격", "치명", "치명피해", "즉사", "회피", "받는피해", "분담")   # 늘 켜진 능력치 (× 스탠드_레벨배율)
 내_상태이상 = ("출혈", "화상", "독", "기절", "혼란", "약화", "둔화", "방어파괴")   # 해제·아공간이 지우는 것
@@ -1985,8 +1986,9 @@ def 스탠드능력검사(a):
     return None
 
 
-def 스탠드요청(user_id, 종류, 내용, 이름=None):
-    """종류: 생성(디스크 1장 사용) / 능력(레벨 20마다 1칸). 반환 (성공, 문구)"""
+def 스탠드요청(user_id, 종류, 내용, 이름=None, 대상=None):
+    """종류: 생성(디스크 1장 사용) / 능력(레벨 20마다 1칸) / 변경(있는 능력 바꾸기, 스탠드_변경비용 골드 —
+    대상은 능력 번호(1부터)나 이름, 비우면 여러 개·전체). 반환 (성공, 문구)"""
     if 캐릭터(user_id) is None:
         return False, "캐릭터가 없습니다."
     내용 = (내용 or "").strip()
@@ -2021,10 +2023,29 @@ def 스탠드요청(user_id, 종류, 내용, 이름=None):
             return False, (f"지금은 새 능력을 만들 수 없어요. (Lv.{다음}에 한 칸 더)" if 다음 <= 스탠드_최대레벨
                            else "능력 칸이 가득 찼어요.")
         이름 = st["이름"]
+    elif 종류 == "변경":
+        if st is None:
+            return False, "스탠드가 아직 없어요."
+        if any(r["종류"] == "변경" for r in 대기):
+            return False, "이미 기다리는 변경 요청이 있어요. 처리될 때까지 기다려 주세요."
+        if 대상 is not None and str(대상).strip():
+            t = str(대상).strip()
+            i = int(t) - 1 if t.isdigit() else next((k for k, a in enumerate(st["능력들"]) if a["이름"] == t), -1)
+            if not 0 <= i < len(st["능력들"]):
+                return False, "바꿀 능력 번호(또는 이름)가 없어요. `!RPG 스탠드` 에서 번호를 확인해 주세요."
+            내용 = f"[#{i + 1} {st['능력들'][i]['이름']}] {내용}"
+        else:
+            내용 = f"[전체] {내용}"
+        cursor.execute("UPDATE rpg_characters SET gold = gold - ? WHERE user_id = ? AND COALESCE(gold, 0) >= ?",
+                       (스탠드_변경비용, user_id, 스탠드_변경비용))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return False, f"골드가 모자라요. 능력 변경은 {스탠드_변경비용:,} 골드예요."
+        이름 = st["이름"]
     else:
-        return False, "생성 또는 능력"
-    cursor.execute("INSERT INTO rpg_stand_requests (user_id, kind, stand_name, request, created_at) VALUES (?, ?, ?, ?, ?)",
-                   (user_id, 종류, 이름, 내용, _지금()))
+        return False, "생성 · 능력 · 변경"
+    cursor.execute("INSERT INTO rpg_stand_requests (user_id, kind, stand_name, request, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                   (user_id, 종류, 이름, 내용, str(스탠드_변경비용) if 종류 == "변경" else None, _지금()))
     번호 = cursor.lastrowid
     conn.commit()
     print(f"[{datetime.now()}] RPG 스탠드 요청 #{번호} {user_id} {종류} {이름}: {내용}")
@@ -2032,7 +2053,8 @@ def 스탠드요청(user_id, 종류, 내용, 이름=None):
 
 
 def 스탠드처리(요청id, 능력=None, 거절=None):
-    """관리자(클로드 코드)가 요청을 처리한다. 능력 dict 를 주면 완성, 거절 문구를 주면 거절(생성이면 디스크 돌려줌).
+    """관리자(클로드 코드)가 요청을 처리한다. 능력 dict 를 주면 완성, 거절 문구를 주면 거절(생성이면 디스크, 변경이면 골드 돌려줌).
+    변경은 능력 dict 면 '[#N …]' 능력을 그걸로 바꾸고, 능력 list 면 능력 전체를 그 목록으로 바꾼다.
     반환 (성공, 문구, 요청 dict)"""
     r = next((x for x in 스탠드요청목록(None, None) if x["id"] == 요청id), None)
     if r is None or r["상태"] != "대기":
@@ -2042,11 +2064,32 @@ def 스탠드처리(요청id, 능력=None, 거절=None):
         cursor.execute("UPDATE rpg_stand_requests SET status = '거절', note = ?, done_at = ? WHERE id = ?", (거절, _지금(), 요청id))
         if r["종류"] == "생성":
             카운트(uid, "스탠드디스크", 1)
+        돌려줄 = int(r["메모"]) if r["종류"] == "변경" and str(r["메모"] or "").isdigit() else 0
+        if 돌려줄:
+            골드변경(uid, 돌려줄, 커밋=False)
         conn.commit()
-        return True, "거절했어요" + (" (디스크 돌려줌)" if r["종류"] == "생성" else ""), r
-    오류 = 스탠드능력검사(능력)
-    if 오류:
-        return False, 오류, r
+        return True, "거절했어요" + (" (디스크 돌려줌)" if r["종류"] == "생성" else f" ({돌려줄:,} 골드 돌려줌)" if 돌려줄 else ""), r
+    for a in (능력 if isinstance(능력, list) and r["종류"] == "변경" else [능력]):
+        오류 = 스탠드능력검사(a)
+        if 오류:
+            return False, 오류, r
+    if r["종류"] == "변경":
+        st = 내스탠드(uid)
+        m = re.match(r"\[#(\d+) ", r["내용"])
+        if isinstance(능력, list):
+            새 = 능력
+            if len(새) > 스탠드능력칸(st["레벨"]):
+                return False, f"능력이 칸({스탠드능력칸(st['레벨'])})보다 많아요", r
+        elif m and 0 < int(m.group(1)) <= len(st["능력들"]):
+            새 = list(st["능력들"])
+            새[int(m.group(1)) - 1] = 능력
+        else:
+            return False, "전체 변경 요청이라 능력 목록(list)을 줘야 해요", r
+        cursor.execute("UPDATE rpg_stands SET abilities = ? WHERE user_id = ?", (json.dumps(새, ensure_ascii=False), uid))
+        이름 = 능력["이름"] if isinstance(능력, dict) else "전체"
+        cursor.execute("UPDATE rpg_stand_requests SET status = '완료', note = ?, done_at = ? WHERE id = ?", (이름, _지금(), 요청id))
+        conn.commit()
+        return True, "변경", r
     if r["종류"] == "생성":
         cursor.execute("INSERT INTO rpg_stands (user_id, name, abilities, created_at) VALUES (?, ?, ?, ?)",
                        (uid, r["이름"], json.dumps([능력], ensure_ascii=False), _지금()))
@@ -5399,6 +5442,7 @@ def 업적알림(이름들):
                           # 자동전투 화면이 이만큼 오래되면 새 메시지로 옮기고 옛 메시지는 지운다
 _수정차례표 = {}          # 채널 id -> 다음 수정이 가능한 시각(monotonic)
 웹훅_한도초 = 4.0         # 버튼 응답 웹훅 수정을 이만큼까지만 기다린다 (전투뷰._제때)
+재생_단계 = 4             # 버튼 전투에서 새 줄을 몇 번에 나눠 보여 줄지 (2026-11-28 6 → 4, 1.5배 빠르게)
 웹훅_쉼초 = 300           # 한 번 막히면 이만큼 한 줄씩 보여주기를 끄고 바로 보여준다
 
 
@@ -5771,8 +5815,8 @@ class 전투뷰(discord.ui.View):
             for item in self.children:
                 item.disabled = True
             이전 = b.로그[: max(0, len(b.로그) - len(새줄))]
-            # 디스코드 수정 제한을 넘지 않게 최대 6단계로 나눈다
-            단계 = max(1, math.ceil(len(새줄) / 6))
+            # 디스코드 수정 제한을 넘지 않게 최대 `재생_단계`로 나눈다
+            단계 = max(1, math.ceil(len(새줄) / 재생_단계))
             막힘 = False
             try:
                 for i in range(단계, len(새줄) + 단계, 단계):
@@ -6460,8 +6504,8 @@ def 스탠드화면(user_id):
         embed.description = (f"경험치 {다음} · 능력 {len(st['능력들'])}/{칸}칸 "
                              f"(Lv.{스탠드_능력간격}마다 1칸, 최대 {스탠드능력칸(스탠드_최대레벨)}칸) · 능력 배율 ×{스탠드_레벨배율(st['레벨']):.2f}\n"
                              "간식을 먹지 않아요. 펫으로 데리고 싸우면 전투 경험치로 자라요.")
-        for a in st["능력들"]:
-            embed.add_field(name=f"「{a['이름']}」", value=스탠드능력문구(a, st["레벨"])[:1024], inline=False)
+        for i, a in enumerate(st["능력들"]):
+            embed.add_field(name=f"{i + 1}. 「{a['이름']}」", value=스탠드능력문구(a, st["레벨"])[:1024], inline=False)
     else:
         q = 스탠드디스크수(user_id)
         embed.description = (f"💿 {스탠드디스크} {q}장\n" + ("`!RPG 스탠드 만들기 [이름] | [능력 설명]` 으로 만들어요."
@@ -6469,7 +6513,8 @@ def 스탠드화면(user_id):
     if 대기:
         embed.add_field(name="⏳ 만드는 중",
                         value="\n".join(f"#{r['id']} {r['종류']} — {r['내용'][:80]}" for r in 대기)[:1024], inline=False)
-    embed.set_footer(text="요청은 관리자가 확인해서 밸런스에 맞게 만들어 줘요 · !RPG 스탠드 능력 [설명] · !RPG 펫 장착 스탠드")
+    embed.set_footer(text="요청은 관리자가 확인해서 밸런스에 맞게 만들어 줘요 · !RPG 스탠드 능력 [설명] · "
+                          f"!RPG 스탠드 변경 [번호] | [내용] ({스탠드_변경비용:,} 골드) · !RPG 펫 장착 스탠드")
     return embed
 
 
@@ -6816,11 +6861,23 @@ async def _명령어(ctx, 용도=None, 인자=()):
             성공, r = 스탠드요청(uid, "능력", " ".join(인자[1:]))
             await ctx.reply(f"👤 새 능력 요청 #{r}을 보냈어요 — 관리자가 만들면 붙어요." if 성공 else r)
             return
+        if 하위 == "변경":
+            글 = " ".join(인자[1:])
+            대상, 내용 = (x.strip() for x in 글.split("|", 1)) if "|" in 글 else (None, 글)
+            if not 내용:
+                await ctx.reply(f"사용법: `!RPG 스탠드 변경 [능력 번호] | [어떻게 바꿀지]` ({스탠드_변경비용:,} 골드, 거절되면 돌려받음)\n"
+                                "번호를 빼면(`!RPG 스탠드 변경 [내용]`) 여러 능력을 한꺼번에 바꾸는 요청이에요. 번호는 `!RPG 스탠드` 에서.")
+                return
+            성공, r = 스탠드요청(uid, "변경", 내용, 대상=대상)
+            await ctx.reply(f"👤 능력 변경 요청 #{r}을 보냈어요 ({스탠드_변경비용:,} 골드 사용) — 관리자가 만들면 바뀌어요. "
+                            "거절되면 골드는 돌려드려요." if 성공 else r)
+            return
         if 하위 == "장착":
             성공, r = 펫장착(uid, "스탠드")
             await ctx.reply("👤 스탠드를 데리고 다녀요." if 성공 else r)
             return
-        await ctx.reply("사용법: `!RPG 스탠드` · `만들기 [이름] | [능력]` · `능력 [설명]` · `장착`")
+        await ctx.reply("사용법: `!RPG 스탠드` · `만들기 [이름] | [능력]` · `능력 [설명]` · "
+                        f"`변경 [능력 번호] | [내용]`({스탠드_변경비용:,} 골드) · `장착`")
         return
 
     if 용도 == "업적":

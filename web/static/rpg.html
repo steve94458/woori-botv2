@@ -391,12 +391,13 @@ function standCard(x) {
   return `<div class="pet" style="margin-top:12px">
     <div class="top"><b>👤 ${st ? `${esc(st.name)} · Lv.${st.level}` : "스탠드"}</b>
       <span class="muted">${st ? (st.next ? `경험치 ${n(st.exp)} / ${n(st.next)}` : "최대 레벨") : `💿 디스크 ${x.disks}장`}</span></div>
-    ${st ? `<div class="d">${st.abilities.map((a) => `「${esc(a.name)}」 ${esc(a.desc)}`).join("<br>") || "능력 없음"}<br>
+    ${st ? `<div class="d">${st.abilities.map((a, i) => `${i + 1}. 「${esc(a.name)}」 ${esc(a.desc)}`).join("<br>") || "능력 없음"}<br>
       <span class="muted">능력 ${st.abilities.length}/${st.slots}칸 · Lv.20마다 1칸 더 (최대 6칸)</span></div>` : ""}
     ${대기}${지난}
     <div class="btns">
       ${!st && x.disks && !x.pending.length ? `<button class="btn small primary" data-stand="create">💿 스탠드 만들기</button>` : ""}
       ${st && 남은칸 > 0 ? `<button class="btn small primary" data-stand="ability">➕ 새 능력 요청</button>` : ""}
+      ${st && !x.pending.some((r) => r.kind === "변경") ? `<button class="btn small" data-stand="change">🔁 능력 변경 (${(x.changeCost || 0).toLocaleString()} 골드)</button>` : ""}
     </div>
     <p class="muted" style="margin:6px 0 0;font-size:13px">요청은 관리자가 확인해서 밸런스에 맞게 능력을 만들어 줘요.</p>
   </div>`;
@@ -404,15 +405,20 @@ function standCard(x) {
 $("#pets").addEventListener("click", (e) => {
   const sb = e.target.closest("button[data-stand]");
   if (sb) {
-    let 이름 = "";
+    let 이름 = "", 대상 = null;
     if (sb.dataset.stand === "create") {
       이름 = prompt("스탠드 이름 (1~20자)");
       if (!이름) return;
     }
-    const 내용 = prompt(sb.dataset.stand === "create" ? "어떤 능력이면 좋겠어요? (300자까지)" : "새 능력을 설명해 주세요 (300자까지)");
+    if (sb.dataset.stand === "change") {
+      대상 = prompt("바꿀 능력 번호 (위 목록 순서, 1부터) — 비우면 여러 능력을 한꺼번에 바꾸는 요청");
+      if (대상 === null) return;
+    }
+    const 내용 = prompt(sb.dataset.stand === "create" ? "어떤 능력이면 좋겠어요? (300자까지)"
+      : sb.dataset.stand === "change" ? "어떻게 바꿀지 적어 주세요 (300자까지, 골드는 거절되면 돌려받아요)" : "새 능력을 설명해 주세요 (300자까지)");
     if (!내용) return;
     run(async () => {
-      const r = await api("api/rpg/stand", { kind: sb.dataset.stand, name: 이름, text: 내용 });
+      const r = await api("api/rpg/stand", { kind: sb.dataset.stand, name: 이름, text: 내용, target: 대상 });
       toast(`👤 요청 #${r.result.id}을 보냈어요. 관리자가 만들면 완성돼요!`);
       await load();
     });
@@ -656,7 +662,7 @@ async function 자동루프() {
 }
 
 // 이번 행동에서 생긴 줄을 한 줄씩 보여준 뒤 최종 상태를 그린다
-const 줄간격 = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 220;
+const 줄간격 = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 150;   // 2026-11-28 220 → 150
 async function 재생(b) {
   const 새 = b.newLog || [];
   if (b.state === "사망" || b.state === "철수") S.result = b;

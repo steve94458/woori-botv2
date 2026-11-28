@@ -1145,6 +1145,8 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         await ctx.reply("존재하지 않는 명령어입니다!")
         print(f"[{datetime.now()} {ctx.author}가 알 수 없는 명령어 사용]")
+    elif isinstance(error, commands.CommandOnCooldown):
+        await ctx.reply(f"조금만 기다려 주세요! {error.retry_after:.0f}초 뒤에 다시 쓸 수 있어요.")
     elif isinstance(error, commands.MemberNotFound):
         await ctx.reply(f"`{error.argument}` 유저를 찾지 못했어요. 멘션이나 디스코드 ID로 적어 주세요.")
     elif isinstance(error, commands.CommandInvokeError) and isinstance(error.original, APIError):
@@ -1958,6 +1960,95 @@ async def 칭호(ctx, 용도: str = None, *, 내용: str = None):
 소개글_최대 = 1000
 cursor.execute("CREATE TABLE IF NOT EXISTS user_intro (user_id TEXT PRIMARY KEY, text TEXT NOT NULL, writer TEXT, updated TEXT)")
 conn.commit()
+
+
+# ------------------------------------------------------------
+# 판별기 — 채팅을 보고 AI가 재미로 어떤 사람인지 분석 (`!판별`, 2026-11-28)
+#   기본은 자기 자신. 남을 보려면 그 사람이 수락 버튼을 눌러야 한다. 지금 채널의 공개 채팅만 보고, 결과는 저장하지 않는다.
+# ------------------------------------------------------------
+판별_훑기 = 1500         # 지금 채널에서 거슬러 올라가 볼 메시지 수
+판별_최대 = 80           # AI에 넘길 그 사람 채팅 수
+판별_최소 = 10           # 이보다 적으면 판별 안 함
+판별_수락초 = 120
+
+
+class 판별수락(discord.ui.View):
+    def __init__(self, 대상):
+        super().__init__(timeout=판별_수락초)
+        self.대상 = 대상
+        self.답 = None
+
+    async def interaction_check(self, interaction):
+        if interaction.user.id != self.대상.id:
+            await interaction.response.send_message("판별 받을 사람만 누를 수 있어요.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="수락", style=discord.ButtonStyle.success, emoji="✅")
+    async def 수락(self, interaction, button):
+        self.답 = True
+        await interaction.response.edit_message(content=f"✅ {self.대상.display_name}님이 수락했어요. 판별 중…", view=None)
+        self.stop()
+
+    @discord.ui.button(label="거절", style=discord.ButtonStyle.danger, emoji="✖️")
+    async def 거절(self, interaction, button):
+        self.답 = False
+        await interaction.response.edit_message(content=f"✖️ {self.대상.display_name}님이 거절했어요.", view=None)
+        self.stop()
+
+
+async def _판별채팅(채널, 대상):
+    모음 = []
+    async for m in 채널.history(limit=판별_훑기):
+        if m.author.id == 대상.id and m.content and not m.content.startswith("!"):
+            모음.append(m.content[:200])
+            if len(모음) >= 판별_최대:
+                break
+    return 모음[::-1]
+
+
+@bot.command(help="!판별 [@유저] — 이 채널 채팅을 보고 AI가 재미로 어떤 사람인지 판별 (남은 그 사람이 수락해야 함, 저장 안 함)")
+@commands.cooldown(1, 30, commands.BucketType.user)
+async def 판별(ctx, 대상: discord.Member = None):
+    if ctx.guild is None:
+        await ctx.reply("판별은 서버 채널에서만 돼요.")
+        return
+    대상 = 대상 or ctx.author
+    if 대상.bot:
+        await ctx.reply("봇은 판별할 수 없어요.")
+        return
+    if 대상.id != ctx.author.id:
+        뷰 = 판별수락(대상)
+        await ctx.send(f"{대상.mention} {ctx.author.display_name}님이 판별을 요청했어요. 이 채널에서 쓴 채팅을 AI가 보고 재미로 분석해요 "
+                       f"(저장 안 함). 수락할래요? ({판별_수락초}초)", view=뷰,
+                       allowed_mentions=discord.AllowedMentions(users=[대상]))
+        await 뷰.wait()
+        if not 뷰.답:
+            if 뷰.답 is None:
+                await ctx.send(f"⌛ {대상.display_name}님이 답이 없어서 판별을 안 했어요.")
+            return
+    async with ctx.typing():
+        채팅 = await _판별채팅(ctx.channel, 대상)
+        if len(채팅) < 판별_최소:
+            await ctx.reply(f"{대상.display_name}님 채팅이 이 채널에 너무 적어요 ({len(채팅)}개, {판별_최소}개 넘어야 해요).")
+            return
+        글 = (f"아래는 디스코드 유저 '{대상.display_name}'가 한 채널에 쓴 최근 채팅 {len(채팅)}개야. "
+             "친구끼리 웃자고 보는 거니까 이 사람이 어떤 사람인지 가볍고 다정하게 판별해 줘. 형식은 딱 이렇게:\n"
+             "🎌 오타쿠력: N% — (한 줄 이유)\n🎯 관심사: (3개)\n💬 말투: (한 줄)\n🧩 한 줄 요약: (한 줄)\n"
+             "규칙: 외모·몸·건강·성적 지향·종교·정치·가족·사는 곳 같은 민감한 건 절대 추측하지 마. 욕·비하·놀림 금지. "
+             "채팅을 길게 그대로 옮기지 마. 다른 사람 얘기는 하지 마. 600자 이내 반말.\n\n채팅:\n" + "\n".join(f"- {x}" for x in 채팅))
+        try:
+            응답 = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: 제미나이요청(model="gemini-3.5-flash-lite",
+                                         contents=[types.Content(role="user", parts=[types.Part(text=글)])]))
+            결과 = (응답.text or "").strip()
+        except APIError:
+            await ctx.reply(제미나이_바쁨)
+            return
+    embed = discord.Embed(title=f"🔎 {대상.display_name} 판별 결과", description=결과[:1500] or "판별 실패", color=0xE91E63)
+    embed.set_footer(text=f"이 채널 채팅 {len(채팅)}개 기준 · 재미로 보는 거예요 · 저장 안 함")
+    await ctx.reply(embed=embed)
+    _로그(ctx, "판별", 대상.display_name)
 
 
 def _소개대상(ctx, 글):
@@ -3710,6 +3801,43 @@ def _플리다운(검색어, 위치, 유튜브목록=False):
         return 곡이름(ydl.prepare_filename(항목[0]))
 
 
+def _곡글자(글):
+    """곡 제목 비교용: 소문자, 글자·숫자만"""
+    return "".join(ch for ch in 글.lower() if ch.isalnum())
+
+
+def 플리검색(검색어, 이름=None):
+    """[(플레이리스트, 번호, 곡)] — 검색어의 낱말이 모두 제목에 든 곡 (띄어쓰기·대소문자·기호 무시). 이름 없으면 전부"""
+    낱말 = [_곡글자(w) for w in (검색어 or "").split() if _곡글자(w)]
+    if not 낱말:
+        return []
+    결과 = []
+    for 플 in ([이름] if 이름 else 플리목록()):
+        for i, 곡 in enumerate(플리곡목록(플) or []):
+            글 = _곡글자(곡)
+            if all(w in 글 for w in 낱말):
+                결과.append((플, i + 1, 곡))
+    return 결과
+
+
+def _비슷한곡(새곡, 곡들):
+    """새로 넣은 곡과 제목이 비슷한 기존 곡 [(번호, 곡)] (최대 3개)"""
+    import difflib
+    새 = _곡글자(새곡)
+    후보 = []
+    for i, 곡 in enumerate(곡들):
+        옛 = _곡글자(곡)
+        if not 옛 or not 새:
+            continue
+        점수 = 1.0 if (옛 in 새 or 새 in 옛) else difflib.SequenceMatcher(None, 새, 옛).ratio()
+        if 점수 >= 플리_비슷함:
+            후보.append((점수, i + 1, 곡))
+    return [(번호, 곡) for _, 번호, 곡 in sorted(후보, reverse=True)[:3]]
+
+
+플리_비슷함 = 0.75       # 추가할 때 '비슷한 곡이 이미 있어요' 알림 기준 (제목 글자 비슷한 정도 0~1)
+
+
 async def 플리추가(이름, 검색어):
     위치 = 플리위치(이름)
     if 위치 is None:
@@ -3717,12 +3845,20 @@ async def 플리추가(이름, 검색어):
     if not 검색어:
         return "추가할 노래 이름을 알려주세요."
     os.makedirs(위치, exist_ok=True)
+    전 = 플리곡목록(이름) or []
     loop = asyncio.get_running_loop()
     노래 = await loop.run_in_executor(None, _플리다운, 검색어, 위치)
     if 노래 is None:
         return f"'{검색어}' 검색 결과가 없습니다."
+    if 노래 in 전:
+        return f"{노래}은(는) 이미 {이름} 플레이리스트 {전.index(노래) + 1}번에 있어서 새로 넣지 않았습니다."
     _음악로그(f"플리 {이름}에 {노래} 추가")
-    return f"{이름} 플레이리스트에 {노래}이(가) 추가되었습니다!"
+    글 = f"{이름} 플레이리스트에 {노래}이(가) 추가되었습니다!"
+    비슷 = _비슷한곡(노래, 전)
+    if 비슷:
+        글 += ("\n⚠️ 비슷한 곡이 이미 있어요: " + " / ".join(f"{번호}. {곡}" for 번호, 곡 in 비슷)
+              + f"\n겹치면 `!플레이리스트 삭제 {이름} {len(전) + 1}` 로 방금 넣은 곡을 뺄 수 있어요.")
+    return 글
 
 
 async def 플리유튜브(이름, 주소):
@@ -3868,8 +4004,9 @@ async def 노래신청(ctx, *, 검색어: str = None):
  
  
 플리_사용법 = (
-    "사용법: !플레이리스트 [목록/생성/소멸/추가/삭제/확인/재생/셔플재생/반복/셔플반복/반복끄기/중단/순서/유튜브플레이리스트] [이름] [값]\n"
+    "사용법: !플레이리스트 [목록/생성/소멸/추가/삭제/확인/검색/재생/셔플재생/반복/셔플반복/반복끄기/중단/순서/유튜브플레이리스트] [이름] [값]\n"
     "• 추가: 노래 이름 / 삭제: 곡 번호 / 유튜브플레이리스트: 주소\n"
+    "• 검색: `!플레이리스트 검색 [이름] [검색어]` (이름 빼면 모든 플레이리스트에서, 띄어쓰기·대소문자 무시)\n"
     "• 소멸: 플레이리스트 통째로 지우기 (관리자만, 되돌릴 수 없음)\n"
     "• 반복: 다 돌면 처음부터 다시 / `!플레이리스트 반복끄기 [이름]` (이름 없으면 전부)\n"
     "• 순서: `!플레이리스트 순서 [이름] [현재번호] [옮길번호]`"
@@ -3888,6 +4025,26 @@ async def 플레이리스트(ctx, 용도: str = None, 이름: str = None, *, 검
     if 용도 == "반복끄기":
         await ctx.reply(플리반복끄기(이름))
         _로그(ctx, "플레이리스트", f"반복끄기 {이름 or ''}")
+        return
+    if 용도 == "검색":
+        if 이름 in 플리목록():
+            플, 찾을 = 이름, 검색어
+        else:
+            플, 찾을 = None, " ".join(x for x in (이름, 검색어) if x)
+        if not 찾을:
+            await ctx.reply("사용법: `!플레이리스트 검색 [이름] [검색어]` (이름 빼면 모든 플레이리스트에서)")
+            return
+        결과 = 플리검색(찾을, 플)
+        if not 결과:
+            await ctx.reply(f"'{찾을}'이(가) 든 곡이 {플 + ' 플레이리스트에' if 플 else '어느 플레이리스트에도'} 없습니다.")
+        else:
+            줄 = [(f"{n}. {곡}" if 플 else f"[{p}] {n}. {곡}") for p, n, 곡 in 결과[:40]]
+            if len(결과) > 40:
+                줄.append(f"... 외 {len(결과) - 40}곡")
+            글 = f"🔎 '{찾을}' 검색 결과 {len(결과)}곡" + (f" ({플})" if 플 else "") + "\n" + "\n".join(줄)
+            for i in range(0, len(글), 1900):
+                await (ctx.reply if i == 0 else ctx.send)(글[i:i + 1900])
+        _로그(ctx, "플레이리스트", f"검색 {플 or '전체'} {찾을}")
         return
     if 용도 == "제거":
         await ctx.reply("플레이리스트 통째로 지우기는 이제 `!플레이리스트 소멸 [이름]`이에요. 곡 하나는 `!플레이리스트 삭제 [이름] [번호]`.")

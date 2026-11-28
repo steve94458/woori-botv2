@@ -3000,14 +3000,15 @@ async def _음악실행(함수):
     "저장된 플레이리스트를 관리하고 재생한다. list_all=플레이리스트 이름 목록, show=곡 목록, create=만들기, delete=플레이리스트 통째로 삭제, "
     "add=노래 검색해서 추가(query), remove=곡 하나 삭제(from_pos), move=곡 순서 바꾸기(from_pos→to_pos), "
     "play=대기열에 넣고 재생, shuffle_play=섞어서 재생, repeat_play=다 돌면 처음부터 다시 도는 반복 재생, shuffle_repeat=섞어서 반복 재생, "
-    "repeat_off=반복 끄기(name 없으면 전부, 곡은 대기열에 남음), stop=재생 중단 및 대기열 비우기, import_youtube=유튜브 플레이리스트 주소(query)로 곡 가져오기. "
+    "repeat_off=반복 끄기(name 없으면 전부, 곡은 대기열에 남음), stop=재생 중단 및 대기열 비우기, import_youtube=유튜브 플레이리스트 주소(query)로 곡 가져오기, "
+    "search=제목에 query 낱말이 든 곡 찾기(name 없으면 모든 플레이리스트, 이미 있는 곡인지 볼 때). "
     "delete 는 유저가 분명히 플레이리스트를 지우라고 했을 때만 쓴다.",
     {
         "action": {"type": "string", "enum": ["list_all", "show", "create", "delete", "add", "remove", "move",
                                               "play", "shuffle_play", "repeat_play", "shuffle_repeat", "repeat_off",
-                                              "stop", "import_youtube"]},
+                                              "stop", "import_youtube", "search"]},
         "name": {"type": "string", "description": "플레이리스트 이름"},
-        "query": {"type": "string", "description": "add 의 노래 검색어, import_youtube 의 주소"},
+        "query": {"type": "string", "description": "add 의 노래 검색어, import_youtube 의 주소, search 의 찾을 글자"},
         "from_pos": {"type": "integer", "description": "곡 번호"},
         "to_pos": {"type": "integer", "description": "옮길 자리 번호"},
     },
@@ -3091,6 +3092,15 @@ def AI플레이리스트(user_id, action, name=None, query=None, from_pos=None, 
         return M.음악재생중단(g) if g else "봇이 서버 정보를 아직 못 불러왔습니다. 잠시 후 다시 시도해주세요."
     if action == "repeat_off":
         return M.플리반복끄기(name)
+    if action == "search":
+        if not query:
+            return "찾을 글자(query)가 필요합니다."
+        if name and name not in M.플리목록():
+            return f"{name} 플레이리스트가 없습니다."
+        결과 = M.플리검색(query, name)
+        if not 결과:
+            return f"'{query}'이(가) 든 곡이 없습니다."
+        return f"'{query}' 검색 결과 {len(결과)}곡\n" + "\n".join(f"[{p}] {n}. {곡}" for p, n, 곡 in 결과[:50])
     if not name:
         return "플레이리스트 이름(name)이 필요합니다."
     if action == "show":
