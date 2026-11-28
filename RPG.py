@@ -13,6 +13,7 @@
 """
 
 import asyncio
+import copy
 import json
 import math
 import os
@@ -1857,6 +1858,11 @@ def _펫찾기(이름, user_id=None):
 #   상태의 "중첩": N (출혈·화상만, 1~5) — 그 도트 피해 × N (`e["도트세기"]`)
 #   "쿨레벨": {"80": 3, "100": 2} — 그 레벨부터 쿨이 바뀐다 (`스탠드쿨`)
 #   "연속공격": {"2": 0.2, "3": 0.1} — 내 공격 뒤 그 확률로 같은 공격을 그 횟수가 될 때까지 더 한다 (확률은 레벨배율 안 곱함, `_스탠드연타`)
+#   "되감기": true (부활충전과 같이) — 부활충전을 쓸 때 악세 부활을 채우는 대신 그 층을 처음부터 다시 한다
+#     (적·층 상태를 층 첫 행동 때 찍어 둔 것으로 되돌림 `전투._층처음`, 체력은 그때 체력·최소 절반, 내 효과는 전부 지움, 광폭은 남김. 레이드는 제자리 절반)
+#   "광폭": {"턴": 6, "쉼": 3, "상시": {...}, "연속공격": {...}} — 적에게 맞거나 목숨을 잃으면 광폭(층 넘어서도 턴만큼).
+#     그동안 상시가 하나 더 붙고(레벨배율 곱함, 즉사는 안 곱함) 연속공격 표가 이걸로 바뀐다. 끝나면 쉼 턴 동안 맞아도 안 켜짐,
+#     광폭 중이거나 쉬는 중이어도 목숨을 잃으면 턴이 처음부터 (`전투.광폭상태`, `_광폭켜기`)
 #   "시간무시": true — 적의 시간 능력 무시: 적 산데비스탄 회피·더 월드 정지가 안 먹는다 (메이드 인 헤븐 가속은 그대로)
 #   조건 {"층턴": N} — 층(싸움)마다 N번째 턴에 한 번만 (확률 대신. 펫이 쓰러져 있었으면 그 뒤 처음 행동 때)
 #   상시 {"공격": 0.15, "치명": 0.1, "치명피해": 0.1} (선택) — 스탠드를 데리고 있으면 늘 공격력 ×(1+공격×배율), 치명 +치명×배율,
@@ -1903,7 +1909,7 @@ def 스탠드능력검사(a):
     """능력 dict 형식 확인. 문제 있으면 이유 문자열, 괜찮으면 None"""
     상시 = a.get("상시") if isinstance(a, dict) else None
     if not isinstance(a, dict) or not a.get("이름") or not isinstance(a.get("효과", []), list) \
-            or not (a.get("효과") or 상시 or a.get("부활충전") or a.get("악세강화") or a.get("시간무시") or a.get("연속공격")):
+            or not (a.get("효과") or 상시 or a.get("부활충전") or a.get("악세강화") or a.get("시간무시") or a.get("연속공격") or a.get("광폭")):
         return "이름과 효과 목록(또는 상시·부활충전)이 필요해요"
     if "부활충전" in a and not (isinstance(a["부활충전"], int) and 1 <= a["부활충전"] <= 3):
         return "부활충전은 1~3 정수"
@@ -1919,6 +1925,18 @@ def 스탠드능력검사(a):
                                        for k, v in a["연속공격"].items())
                                and sum(a["연속공격"].values()) <= 1):
         return "연속공격은 {\"횟수(2~5)\": 확률} (확률 합 1 이하)"
+    if "되감기" in a and not (a["되감기"] is True and a.get("부활충전")):
+        return "되감기는 true, 부활충전과 같이"
+    if "광폭" in a:
+        광 = a["광폭"]
+        if not (isinstance(광, dict) and isinstance(광.get("턴", 6), int) and 1 <= 광.get("턴", 6) <= 10
+                and isinstance(광.get("쉼", 0), int) and 광.get("쉼", 0) >= 0):
+            return "광폭은 {턴: 1~10, 쉼: 0 이상, 상시, 연속공격}"
+        if 광.get("상시") and (set(광["상시"]) - set(스탠드_상시종류)
+                              or not all(isinstance(v, (int, float)) and 0 < v <= 0.5 for v in 광["상시"].values())):
+            return "광폭 상시는 상시와 같은 형식"
+        if 광.get("연속공격") and 스탠드능력검사({"이름": "-", "연속공격": 광["연속공격"]}):
+            return "광폭 연속공격은 연속공격과 같은 형식"
     if "충전최대" in a and not (isinstance(a["충전최대"], int) and a["충전최대"] >= 1):
         return "충전최대는 1 이상 정수"
     if 상시 is not None:
@@ -2824,8 +2842,8 @@ class 전투:
             s["공격력"] = round(s["공격력"] * 배)
         if p and p["이름"] == "스탠드":
             배 = 스탠드_레벨배율(p["능력lv"])
-            for a in p.get("능력들") or []:
-                상시 = a.get("상시") or {}
+            광 = self._광폭중()
+            for 상시 in [a.get("상시") or {} for a in p.get("능력들") or []] + ([광.get("상시") or {}] if 광 else []):
                 if 상시.get("공격"):
                     s["무기피해"] *= 1 + 상시["공격"] * 배
                     s["공격력"] = round(s["공격력"] * (1 + 상시["공격"] * 배))
@@ -2840,7 +2858,51 @@ class 전투:
         p = getattr(self, "펫", None)
         if not p or p["이름"] != "스탠드":
             return 0.0
-        return sum((a.get("상시") or {}).get(키, 0) for a in p.get("능력들") or []) * 스탠드_레벨배율(p["능력lv"])
+        광 = self._광폭중()
+        return (sum((a.get("상시") or {}).get(키, 0) for a in p.get("능력들") or [])
+                + ((광.get("상시") or {}).get(키, 0) if 광 else 0)) * 스탠드_레벨배율(p["능력lv"])
+
+    def _광폭능력(self):
+        p = getattr(self, "펫", None)
+        if not p or p["이름"] != "스탠드":
+            return None
+        return next((a for a in p.get("능력들") or [] if a.get("광폭")), None)
+
+    def _광폭중(self):
+        """광폭 중이면 그 능력의 '광폭' dict"""
+        a = self._광폭능력()
+        st = getattr(self, "광폭상태", None)
+        return a["광폭"] if a and st and st.get("남은", 0) > 0 else None
+
+    def _광폭켜기(self, 목숨=False):
+        """적에게 맞으면(쉬는 중이 아니고 광폭 중이 아닐 때) / 목숨을 잃으면(늘, 턴을 처음부터) 광폭"""
+        a = self._광폭능력()
+        if not a:
+            return
+        st = self.__dict__.setdefault("광폭상태", {"남은": 0, "쉼": 0})
+        턴 = int(a["광폭"].get("턴", 6))
+        if 목숨:
+            다시 = st["남은"] > 0
+            st.update(남은=턴, 쉼=0)                    # 턴끝 부활 뒤라 이번엔 안 줄어든다
+            self.기록(f"🔥 {self.펫['별명']}: 「{a['이름']}」 — " + (f"광폭이 다시 {턴}턴!" if 다시 else f"광폭! ({턴}턴)"))
+            return
+        if st["남은"] > 0 or st["쉼"] > 0:
+            return
+        st["남은"] = 턴 + 1                             # 적 턴에 켜지니 이번 턴 끝에 한 번 줄어든다
+        self.기록(f"   🔥 {self.펫['별명']}: 「{a['이름']}」 — 광폭! ({턴}턴)")
+
+    def _광폭세기(self):
+        st = getattr(self, "광폭상태", None)
+        a = self._광폭능력()
+        if not st or not a:
+            return
+        if st["남은"] > 0:
+            st["남은"] -= 1
+            if st["남은"] == 0:
+                st["쉼"] = int(a["광폭"].get("쉼", 0))
+                self.기록(f"🔥 광폭이 가라앉았다" + (f" ({st['쉼']}턴 동안 다시 안 켜짐)" if st["쉼"] else ""))
+        elif st["쉼"] > 0:
+            st["쉼"] -= 1
 
     def _시간무시(self):
         p = getattr(self, "펫", None)
@@ -2994,6 +3056,10 @@ class 전투:
         self.마지막 = datetime.now()
         self.새로그 = []
         _잠금(self.uid)
+        if self._광폭능력() is not None or any(a.get("되감기") for a in (self.펫 or {}).get("능력들") or []):
+            처음 = getattr(self, "_층처음", None)
+            if not 처음 or 처음[0] != getattr(self, "층번호", 0):      # 스탠드 되감기: 층 첫 행동 때 찍어 둔다
+                self._층처음 = (getattr(self, "층번호", 0), copy.deepcopy(self.적들), self.체력)
         if self.효과.get("기절"):
             self.기록("😵 기절해서 움직일 수 없다!")
             if self.던전:
@@ -3418,6 +3484,8 @@ class 전투:
         """적 공격 피해를 체력에서 뺀다 (펫 분담 뒤). 생명 주입 중 크게 맞으면 쇼크사. 실제로 받은 피해"""
         실제 = self._펫분담(피해)
         self.체력 -= 실제
+        if 실제 > 0:
+            self._광폭켜기()
         if self.효과.get("생명주입") and self.체력 > 0 and 실제 >= self.최대체력 * 생명주입_쇼크:
             self.체력 = 0
             self.기록("🐞 감각이 폭주한 몸이 고통을 견디지 못했다… 쇼크사!")
@@ -3514,10 +3582,14 @@ class 전투:
         if not p or p["이름"] != "스탠드":
             return
         a = next((x for x in p.get("능력들") or [] if x.get("연속공격")), None)
-        if not a:
+        광 = self._광폭중()
+        표 = (광 or {}).get("연속공격") or (a or {}).get("연속공격")
+        if not 표:
             return
+        if 광 and 광.get("연속공격"):
+            a = self._광폭능력()
         r, n = random.random(), 1
-        for 횟수, 확률 in sorted(((int(k), float(v)) for k, v in a["연속공격"].items()), reverse=True):
+        for 횟수, 확률 in sorted(((int(k), float(v)) for k, v in 표.items()), reverse=True):
             if r < 확률:
                 n = 횟수
                 break
@@ -3967,7 +4039,8 @@ class 전투:
         p = self.펫
         if not p or p["이름"] != "스탠드" or e["hp"] <= 0:
             return
-        확률 = sum((a.get("상시") or {}).get("즉사", 0) for a in p.get("능력들") or [])
+        확률 = sum((a.get("상시") or {}).get("즉사", 0) for a in p.get("능력들") or []) \
+            + ((self._광폭중() or {}).get("상시") or {}).get("즉사", 0)
         if 확률 and random.random() < 확률:
             self._스탠드끝내기(e, 3 * 스탠드_레벨배율(p["능력lv"]), "약점을 꿰뚫었다")
 
@@ -3982,6 +4055,18 @@ class 전투:
             return
         self.스탠드부활쓴 = 쓴 + 1
         능력 = next(a for a in p["능력들"] if a.get("부활충전"))
+        처음 = getattr(self, "_층처음", None)
+        if 능력.get("되감기") and self.비밀 != "레이드" and 처음 and 처음[0] == getattr(self, "층번호", 0):
+            self.기록(f"👤 {p['별명']}: 「{능력['이름']}」 — ⏪ 시간을 되감았다! 이 층을 처음부터 다시 한다 "
+                     f"(남은 되감기 {횟수 - self.스탠드부활쓴}회)")
+            self.적들 = copy.deepcopy(처음[1])
+            self.체력 = max(1, 처음[2], round(self.최대체력 * 0.5))
+            self.효과 = {}
+            self.독중첩 = 0
+            self.고통 = []
+            self.스탠드예약 = []
+            self._광폭켜기(목숨=True)
+            return
         목록 = list(self.악세효과.get("부활목록") or [])[:int(능력.get("충전최대", 99))]     # 좋은 것부터
         n = len(목록)
         self.기록(f"👤 {p['별명']}: 「{능력['이름']}」")
@@ -3995,6 +4080,7 @@ class 전투:
                 self.효과.pop(k, None)
             self.독중첩 = 0
             self.기록("   ↳ 쓰러진 몸을 일으켜 세웠다! (체력 절반)")
+            self._광폭켜기(목숨=True)
 
     def _스탠드효과(self, 효, 배, 능력이름=None):
         종 = 효.get("종류")
@@ -4302,10 +4388,12 @@ class 전투:
                 for x in self.적들:          # 보스가 쓰러지면 졸개도 같이 사라진다
                     x["hp"] = 0
 
+        self._광폭세기()
         if self.체력 <= 0 and self.부활남음 <= 0:
             self._스탠드부활충전()
         if self.체력 <= 0 and self.부활남음 > 0:
             비율, 부활이모지 = self.악세효과["부활목록"][len(self.악세효과["부활목록"]) - self.부활남음]
+            self._광폭켜기(목숨=True)
             self.부활남음 -= 1
             self.체력 = max(1, round(self.최대체력 * 비율))
             for k in ("출혈", "화상", "독", "기절", "약화", "둔화", "방어파괴"):
